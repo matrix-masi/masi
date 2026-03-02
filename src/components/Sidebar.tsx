@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { LogOut } from "lucide-react";
 import { useMatrix } from "../contexts/MatrixContext";
 import { useRoomList } from "../hooks/useRoomList";
 import RoomItem from "./RoomItem";
@@ -47,9 +48,9 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
         <button
           onClick={logout}
           title="Logout"
-          className="rounded-sm px-1.5 py-1 text-[1.1rem] text-muted transition-colors hover:text-danger"
+          className="rounded-sm p-1.5 text-muted transition-colors hover:text-danger"
         >
-          ⏻
+          <LogOut size={20} strokeWidth={2} />
         </button>
       </div>
 
