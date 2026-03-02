@@ -68,6 +68,7 @@ export function MatrixProvider({ children }: { children: ReactNode }) {
   const recoveryKeyBytesRef = useRef<Uint8Array | null>(null);
   const recoveryResolveRef = useRef<((decoded: Uint8Array | null) => void) | null>(null);
   const clientRef = useRef<sdk.MatrixClient | null>(null);
+  const inflightInitRef = useRef<Promise<void> | null>(null);
 
   const bumpRoomList = useCallback(() => {
     setRoomListVersion((v) => v + 1);
@@ -75,71 +76,82 @@ export function MatrixProvider({ children }: { children: ReactNode }) {
 
   const initClient = useCallback(
     async (sess: SessionData) => {
-      const c = sdk.createClient({
-        baseUrl: sess.baseUrl,
-        userId: sess.userId,
-        accessToken: sess.accessToken,
-        deviceId: sess.deviceId,
-        timelineSupport: true,
-        cryptoCallbacks: {
-          getSecretStorageKey: async ({
-            keys,
-          }: {
-            keys: Record<string, object>;
-          }) => {
-            if (recoveryKeyBytesRef.current) {
-              const keyId = Object.keys(keys)[0];
-              return [keyId, recoveryKeyBytesRef.current];
-            }
-            return new Promise<[string, Uint8Array] | null>((resolve) => {
-              recoveryResolveRef.current = (decoded) => {
-                if (decoded) {
-                  const keyId = Object.keys(keys)[0];
-                  resolve([keyId, decoded]);
-                } else {
-                  resolve(null);
-                }
-              };
-              setShowRecoveryModal(true);
-              setRecoveryError(null);
-            });
-          },
-          cacheSecretStorageKey: (
-            _keyId: string,
-            _keyInfo: unknown,
-            key: Uint8Array
-          ) => {
-            recoveryKeyBytesRef.current = key;
-          },
-        },
-      });
-
-      clientRef.current = c;
-      setClient(c);
-
-      try {
-        await c.initRustCrypto();
-        setCryptoAvailable(true);
-      } catch (err) {
-        console.warn(
-          "Crypto init failed, encrypted messages won't be decryptable:",
-          err
-        );
+      if (inflightInitRef.current) {
+        return inflightInitRef.current;
       }
+      const run = async () => {
+        const c = sdk.createClient({
+          baseUrl: sess.baseUrl,
+          userId: sess.userId,
+          accessToken: sess.accessToken,
+          deviceId: sess.deviceId,
+          timelineSupport: true,
+          cryptoCallbacks: {
+            getSecretStorageKey: async ({
+              keys,
+            }: {
+              keys: Record<string, object>;
+            }) => {
+              if (recoveryKeyBytesRef.current) {
+                const keyId = Object.keys(keys)[0];
+                return [keyId, recoveryKeyBytesRef.current];
+              }
+              return new Promise<[string, Uint8Array] | null>((resolve) => {
+                recoveryResolveRef.current = (decoded) => {
+                  if (decoded) {
+                    const keyId = Object.keys(keys)[0];
+                    resolve([keyId, decoded]);
+                  } else {
+                    resolve(null);
+                  }
+                };
+                setShowRecoveryModal(true);
+                setRecoveryError(null);
+              });
+            },
+            cacheSecretStorageKey: (
+              _keyId: string,
+              _keyInfo: unknown,
+              key: Uint8Array
+            ) => {
+              recoveryKeyBytesRef.current = key;
+            },
+          },
+        });
 
-      c.on(sdk.ClientEvent.Sync, (state: string) => {
-        setSyncState(state);
-        if (state === "PREPARED" || state === "SYNCING") {
-          bumpRoomList();
+        clientRef.current = c;
+        setClient(c);
+
+        try {
+          await c.initRustCrypto();
+          setCryptoAvailable(true);
+        } catch (err) {
+          console.warn(
+            "Crypto init failed, encrypted messages won't be decryptable:",
+            err
+          );
         }
+
+        c.on(sdk.ClientEvent.Sync, (state: string) => {
+          setSyncState(state);
+          if (state === "PREPARED" || state === "SYNCING") {
+            bumpRoomList();
+          }
+        });
+
+        c.on(sdk.RoomEvent.Timeline, () => bumpRoomList());
+        c.on(sdk.RoomEvent.Name, () => bumpRoomList());
+        c.on(sdk.RoomEvent.Receipt, () => bumpRoomList());
+        c.on(sdk.RoomEvent.MyMembership, () => bumpRoomList());
+
+        await c.startClient({ initialSyncLimit: 30 });
+      };
+      const p = run();
+      inflightInitRef.current = p;
+      p.finally(() => {
+        inflightInitRef.current = null;
       });
-
-      c.on(sdk.RoomEvent.Timeline, () => bumpRoomList());
-      c.on(sdk.RoomEvent.Name, () => bumpRoomList());
-      c.on(sdk.RoomEvent.Receipt, () => bumpRoomList());
-      c.on(sdk.RoomEvent.MyMembership, () => bumpRoomList());
-
-      await c.startClient({ initialSyncLimit: 30 });
+      return p;
     },
     [bumpRoomList]
   );
