@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Matrix Client</title>
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <!-- Login Screen -->
+  <div id="login-screen" class="screen active">
+    <div class="login-card">
+      <h1>Matrix</h1>
+      <p class="subtitle">Minimalist client</p>
+      <form id="login-form">
+        <input type="url" id="server-url" placeholder="Server URL" value="https://matrix.org" required />
+        <input type="text" id="username" placeholder="Username" required />
+        <input type="password" id="password" placeholder="Password" required />
+        <button type="submit" id="login-btn">Sign in</button>
+        <p id="login-error" class="error" hidden></p>
+      </form>
+    </div>
+  </div>
+
+  <!-- Main App -->
+  <div id="app-screen" class="screen">
+    <!-- Sidebar -->
+    <aside id="sidebar">
+      <div class="sidebar-header">
+        <span id="user-display-name" class="user-name"></span>
+        <button id="logout-btn" title="Logout">⏻</button>
+      </div>
+      <input type="text" id="room-search" placeholder="Search rooms…" />
+      <div id="room-list-loader">
+        <div class="spinner"></div>
+        <span>Syncing rooms…</span>
+      </div>
+      <ul id="room-list"></ul>
+    </aside>
+
+    <!-- Overlay for mobile sidebar tap-away -->
+    <div id="sidebar-overlay"></div>
+
+    <!-- Chat area -->
+    <main id="chat-area">
+      <header id="chat-header">
+        <button id="sidebar-toggle" title="Rooms">☰</button>
+        <span id="room-name">Select a room</span>
+      </header>
+      <div id="crypto-banner" hidden>
+        <span>🔒 Some messages couldn't be decrypted.</span>
+        <button id="enter-recovery-key">Enter Recovery Key</button>
+      </div>
+      <div id="timeline"></div>
+      <div id="typing-indicator" hidden></div>
+      <form id="message-form" hidden>
+        <label id="attach-btn" title="Attach file">
+          ＋
+          <input type="file" id="file-input" accept="image/*,video/*" hidden />
+        </label>
+        <input type="text" id="message-input" placeholder="Message…" autocomplete="off" />
+        <button type="submit" title="Send">➤</button>
+      </form>
+    </main>
+  </div>
+
+  <!-- Recovery key modal -->
+  <div id="recovery-modal" hidden>
+    <div class="recovery-card">
+      <h2>Recovery Key</h2>
+      <p>Enter your recovery key (also called security key) to decrypt messages from encrypted rooms.</p>
+      <textarea id="recovery-key-input" placeholder="Enter your recovery key…" rows="3" spellcheck="false"></textarea>
+      <p id="recovery-error" class="error" hidden></p>
+      <div class="recovery-actions">
+        <button id="recovery-cancel">Cancel</button>
+        <button id="recovery-submit">Restore Keys</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Media lightbox -->
+  <div id="lightbox" hidden>
+    <button id="lightbox-close">✕</button>
+    <div id="lightbox-content"></div>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
