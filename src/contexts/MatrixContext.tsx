@@ -65,8 +65,10 @@ export function MatrixProvider({ children }: { children: ReactNode }) {
   const [recoveryLoading, setRecoveryLoading] = useState(false);
   const [showCryptoBanner, setShowCryptoBanner] = useState(false);
 
-  const recoveryKeyBytesRef = useRef<Uint8Array | null>(null);
-  const recoveryResolveRef = useRef<((decoded: Uint8Array | null) => void) | null>(null);
+  const recoveryKeyBytesRef = useRef<Uint8Array<ArrayBuffer> | null>(null);
+  const recoveryResolveRef = useRef<
+    ((decoded: Uint8Array<ArrayBuffer> | null) => void) | null
+  >(null);
   const clientRef = useRef<sdk.MatrixClient | null>(null);
   const inflightInitRef = useRef<Promise<void> | null>(null);
 
@@ -87,16 +89,12 @@ export function MatrixProvider({ children }: { children: ReactNode }) {
           deviceId: sess.deviceId,
           timelineSupport: true,
           cryptoCallbacks: {
-            getSecretStorageKey: async ({
-              keys,
-            }: {
-              keys: Record<string, object>;
-            }) => {
+            getSecretStorageKey: async ({ keys }, _name) => {
               if (recoveryKeyBytesRef.current) {
                 const keyId = Object.keys(keys)[0];
                 return [keyId, recoveryKeyBytesRef.current];
               }
-              return new Promise<[string, Uint8Array] | null>((resolve) => {
+              return new Promise<[string, Uint8Array<ArrayBuffer>] | null>((resolve) => {
                 recoveryResolveRef.current = (decoded) => {
                   if (decoded) {
                     const keyId = Object.keys(keys)[0];
@@ -112,7 +110,7 @@ export function MatrixProvider({ children }: { children: ReactNode }) {
             cacheSecretStorageKey: (
               _keyId: string,
               _keyInfo: unknown,
-              key: Uint8Array
+              key: Uint8Array<ArrayBuffer>
             ) => {
               recoveryKeyBytesRef.current = key;
             },
@@ -224,9 +222,10 @@ export function MatrixProvider({ children }: { children: ReactNode }) {
 
   const submitRecoveryKey = useCallback(
     async (keyStr: string) => {
-      let decoded: Uint8Array;
+      let decoded: Uint8Array<ArrayBuffer>;
       try {
-        decoded = decodeRecoveryKey(keyStr);
+        const decodedRaw = decodeRecoveryKey(keyStr);
+        decoded = new Uint8Array(decodedRaw) as Uint8Array<ArrayBuffer>;
       } catch {
         setRecoveryError("Invalid recovery key format");
         return;

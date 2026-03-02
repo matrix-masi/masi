@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from "react";
-import type { MatrixClient, Room, MatrixEvent } from "matrix-js-sdk";
+import { Direction, type MatrixClient, type Room, type MatrixEvent } from "matrix-js-sdk";
 import { formatDate } from "../lib/helpers";
 
 export interface TimelineEntry {
@@ -47,7 +47,7 @@ export function useTimeline(client: MatrixClient | null, roomId: string | null) 
   const canPaginate = useCallback((): boolean => {
     const room = getRoom();
     if (!room) return false;
-    return !!room.getLiveTimeline().getPaginationToken("b");
+    return !!room.getLiveTimeline().getPaginationToken(Direction.Backward);
   }, [getRoom]);
 
   const loadPreviousMessages = useCallback(
@@ -55,7 +55,7 @@ export function useTimeline(client: MatrixClient | null, roomId: string | null) 
       if (isBackPaginating || !client || !roomId) return;
       const room = client.getRoom(roomId);
       if (!room) return;
-      const token = room.getLiveTimeline().getPaginationToken("b");
+      const token = room.getLiveTimeline().getPaginationToken(Direction.Backward);
       if (!token) return;
 
       setIsBackPaginating(true);
@@ -83,7 +83,7 @@ export function useTimeline(client: MatrixClient | null, roomId: string | null) 
           const events = room.getLiveTimeline().getEvents();
           const oldest = events[0];
           if (oldest?.getDate() && oldest.getDate()! <= targetDate) break;
-          const token = room.getLiveTimeline().getPaginationToken("b");
+          const token = room.getLiveTimeline().getPaginationToken(Direction.Backward);
           if (!token) break;
           await client.scrollback(room, 50);
         }

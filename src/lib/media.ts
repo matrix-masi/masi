@@ -111,19 +111,19 @@ export function fetchAuthenticatedMedia(
   return promise;
 }
 
-function base64UrlToUint8Array(base64url: string): Uint8Array {
+function base64UrlToUint8Array(base64url: string): Uint8Array<ArrayBuffer> {
   const base64 = base64url.replace(/-/g, "+").replace(/_/g, "/");
   const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
   const binary = atob(padded);
-  const bytes = new Uint8Array(binary.length);
+  const bytes = new Uint8Array(binary.length) as Uint8Array<ArrayBuffer>;
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   return bytes;
 }
 
-function base64ToUint8Array(base64: string): Uint8Array {
+function base64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
   const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
   const binary = atob(padded);
-  const bytes = new Uint8Array(binary.length);
+  const bytes = new Uint8Array(binary.length) as Uint8Array<ArrayBuffer>;
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   return bytes;
 }
@@ -131,7 +131,7 @@ function base64ToUint8Array(base64: string): Uint8Array {
 async function decryptAttachment(
   encryptedData: ArrayBuffer,
   fileInfo: EncryptedFile
-): Promise<Uint8Array> {
+): Promise<Uint8Array<ArrayBuffer>> {
   const keyData = base64UrlToUint8Array(fileInfo.key.k);
   const cryptoKey = await crypto.subtle.importKey(
     "raw",
@@ -146,7 +146,7 @@ async function decryptAttachment(
     cryptoKey,
     encryptedData
   );
-  return new Uint8Array(decrypted);
+  return new Uint8Array(decrypted) as Uint8Array<ArrayBuffer>;
 }
 
 function fetchAndDecryptMedia(

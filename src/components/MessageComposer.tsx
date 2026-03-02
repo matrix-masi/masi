@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, type FormEvent, type ChangeEvent } from "react";
+import { EventType, MsgType } from "matrix-js-sdk";
 import { useMatrix } from "../contexts/MatrixContext";
 import { getImageDimensions, getVideoDimensions } from "../lib/helpers";
 
@@ -15,8 +16,8 @@ export default function MessageComposer() {
     if (!body || !currentRoomId || !client) return;
     setMessage("");
     try {
-      await client.sendEvent(currentRoomId, "m.room.message", {
-        msgtype: "m.text",
+      await client.sendEvent(currentRoomId, EventType.RoomMessage, {
+        msgtype: MsgType.Text,
         body,
       });
     } catch (err) {
@@ -69,8 +70,8 @@ export default function MessageComposer() {
           info.w = dims.width;
           info.h = dims.height;
         }
-        await client.sendEvent(currentRoomId, "m.room.message", {
-          msgtype: "m.image",
+        await client.sendEvent(currentRoomId, EventType.RoomMessage, {
+          msgtype: MsgType.Image,
           body: file.name,
           url: mxcUrl,
           info,
@@ -86,8 +87,8 @@ export default function MessageComposer() {
           info.h = dims.height;
           info.duration = dims.duration;
         }
-        await client.sendEvent(currentRoomId, "m.room.message", {
-          msgtype: "m.video",
+        await client.sendEvent(currentRoomId, EventType.RoomMessage, {
+          msgtype: MsgType.Video,
           body: file.name,
           url: mxcUrl,
           info,

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import type { Room } from "matrix-js-sdk";
+import { NotificationCountType, type Room } from "matrix-js-sdk";
 import { useMatrix } from "../contexts/MatrixContext";
 import { getEventPreview } from "../lib/helpers";
 import { fetchAuthenticatedMedia } from "../lib/media";
@@ -16,7 +16,7 @@ export default function RoomItem({ room, active, onSelect }: RoomItemProps) {
 
   const name = room.name || room.roomId;
   const initial = (name || "?")[0].toUpperCase();
-  const notif = room.getUnreadNotificationCount("total") || 0;
+  const notif = room.getUnreadNotificationCount(NotificationCountType.Total) || 0;
   const lastEvent = room.timeline[room.timeline.length - 1];
   const preview = lastEvent ? getEventPreview(lastEvent, client) : "";
 

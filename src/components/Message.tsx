@@ -8,16 +8,26 @@ interface MessageProps {
   event: MatrixEvent;
 }
 
+interface MessageContent extends Record<string, unknown> {
+  msgtype?: string;
+  body?: string;
+  url?: string;
+  file?: Record<string, unknown>;
+  info?: Record<string, unknown>;
+}
+
 export default function Message({ event }: MessageProps) {
   const { client, openLightbox } = useMatrix();
-  const [content, setContent] = useState(event.getContent());
+  const [content, setContent] = useState<MessageContent>(
+    event.getContent() as MessageContent
+  );
   const [undecrypted, setUndecrypted] = useState(isUndecryptedEvent(event));
   const [eventType, setEventType] = useState(event.getType());
 
   useEffect(() => {
     const handler = () => {
       if (!event.isDecryptionFailure()) {
-        setContent(event.getContent());
+        setContent(event.getContent() as MessageContent);
         setUndecrypted(false);
         setEventType(event.getType());
       }
@@ -72,7 +82,7 @@ export default function Message({ event }: MessageProps) {
 }
 
 interface MessageBodyProps {
-  content: Record<string, unknown>;
+  content: MessageContent;
   openLightbox: (
     type: "image" | "video",
     content: Record<string, unknown>
