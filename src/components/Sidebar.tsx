@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
-import { LogOut } from "lucide-react";
+import { Settings } from "lucide-react";
 import { useMatrix } from "../contexts/MatrixContext";
 import { useRoomList } from "../hooks/useRoomList";
 import RoomItem from "./RoomItem";
+import SettingsModal from "./SettingsModal";
 
 interface SidebarProps {
   open: boolean;
@@ -14,6 +15,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
     useMatrix();
   const [filter, setFilter] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [showSettings, setShowSettings] = useState(false);
   const rooms = useRoomList(filter);
 
   useEffect(() => {
@@ -46,11 +48,11 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
           {displayName}
         </span>
         <button
-          onClick={logout}
-          title="Logout"
-          className="rounded-sm p-1.5 text-muted transition-colors hover:text-danger"
+          onClick={() => setShowSettings(true)}
+          title="Settings"
+          className="rounded-sm p-1.5 text-muted transition-colors hover:text-foreground"
         >
-          <LogOut size={20} strokeWidth={2} />
+          <Settings size={20} strokeWidth={2} />
         </button>
       </div>
 
@@ -79,6 +81,11 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
           ))}
         </ul>
       )}
+      <SettingsModal
+        open={showSettings}
+        onClose={() => setShowSettings(false)}
+        onLogout={logout}
+      />
     </aside>
   );
 }
