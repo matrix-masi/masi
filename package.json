@@ -9,8 +9,18 @@
     "preview": "vite preview"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "^4.2.1",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.4",
     "matrix-js-sdk": "^41.0.0",
+    "tailwindcss": "^4.2.1",
+    "typescript": "^5.9.3",
     "vite": "^7.3.1",
     "vite-plugin-singlefile": "^2.3.0"
+  },
+  "dependencies": {
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4"
   }
 }
