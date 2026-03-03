@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { MatrixEventEvent, type MatrixEvent } from "matrix-js-sdk";
-import { EyeOff } from "lucide-react";
+import { EyeOff, FileImage, Loader2, Film } from "lucide-react";
 import { useMatrix } from "../contexts/MatrixContext";
 import { useSettings } from "../contexts/SettingsContext";
 import { shortName, formatTime, isUndecryptedEvent } from "../lib/helpers";
@@ -102,6 +102,37 @@ function MessageBody({ content, openLightbox }: MessageBodyProps) {
   }
 }
 
+function MediaLoadingPlaceholder({
+  filename,
+  icon,
+}: {
+  filename: string;
+  icon: React.ReactNode;
+}) {
+  const [showFilename, setShowFilename] = useState(false);
+  return (
+    <div className="relative mt-1 flex min-h-[120px] min-w-[140px] items-center justify-center gap-2 rounded-sm border border-border bg-muted/30">
+      <div className="flex flex-col items-center gap-2">
+        {icon}
+        <Loader2 size={20} className="animate-spin text-muted" />
+      </div>
+      {/* Tooltip on click for touch: tap to toggle filename */}
+      <button
+        type="button"
+        className="absolute inset-0 cursor-default"
+        onClick={() => setShowFilename((v) => !v)}
+        title={filename}
+        aria-label={filename}
+      />
+      {showFilename && (
+        <div className="absolute bottom-2 left-2 right-2 truncate rounded bg-black/70 px-2 py-1 text-center text-[0.7rem] text-neutral-200">
+          {filename}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ImageContent({
   content,
   openLightbox,
@@ -128,7 +159,13 @@ function ImageContent({
     );
   }, [client, content]);
 
-  if (!src) return <>{(content.body as string) || "[image]"}</>;
+  if (!src)
+    return (
+      <MediaLoadingPlaceholder
+        filename={(content.body as string) || "[image]"}
+        icon={<FileImage size={32} className="text-muted" />}
+      />
+    );
 
   return (
     <div className="relative mt-1 inline-block max-w-full">
@@ -192,7 +229,13 @@ function VideoContent({
     }
   }, [client, content]);
 
-  if (!src) return <>{(content.body as string) || "[video]"}</>;
+  if (!src)
+    return (
+      <MediaLoadingPlaceholder
+        filename={(content.body as string) || "[video]"}
+        icon={<Film size={32} className="text-muted" />}
+      />
+    );
 
   return (
     <div className="relative mt-1 inline-block max-w-full">
