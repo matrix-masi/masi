@@ -9,6 +9,8 @@ import {
 interface SettingsContextValue {
   hideMedia: boolean;
   toggleHideMedia: () => void;
+  sendMarkdown: boolean;
+  toggleSendMarkdown: () => void;
 }
 
 const SettingsContext = createContext<SettingsContextValue | null>(null);
@@ -26,6 +28,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const [hideMedia, setHideMedia] = useState(() =>
     loadBool("setting_hideMedia", false),
   );
+  const [sendMarkdown, setSendMarkdown] = useState(() =>
+    loadBool("setting_sendMarkdown", true),
+  );
 
   const toggleHideMedia = useCallback(() => {
     setHideMedia((prev) => {
@@ -35,8 +40,18 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const toggleSendMarkdown = useCallback(() => {
+    setSendMarkdown((prev) => {
+      const next = !prev;
+      localStorage.setItem("setting_sendMarkdown", String(next));
+      return next;
+    });
+  }, []);
+
   return (
-    <SettingsContext.Provider value={{ hideMedia, toggleHideMedia }}>
+    <SettingsContext.Provider
+      value={{ hideMedia, toggleHideMedia, sendMarkdown, toggleSendMarkdown }}
+    >
       {children}
     </SettingsContext.Provider>
   );

@@ -1,10 +1,13 @@
 import { useState, useRef, useCallback, type FormEvent, type ChangeEvent } from "react";
 import { EventType, MsgType } from "matrix-js-sdk";
 import { useMatrix } from "../contexts/MatrixContext";
+import { useSettings } from "../contexts/SettingsContext";
 import { getImageDimensions, getVideoDimensions } from "../lib/helpers";
+import { markdownToMatrixHtml } from "../lib/markdown";
 
 export default function MessageComposer() {
   const { client, currentRoomId } = useMatrix();
+  const { sendMarkdown } = useSettings();
   const [message, setMessage] = useState("");
   const [uploadToast, setUploadToast] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -16,10 +19,19 @@ export default function MessageComposer() {
     if (!body || !currentRoomId || !client) return;
     setMessage("");
     try {
-      await client.sendEvent(currentRoomId, EventType.RoomMessage, {
-        msgtype: MsgType.Text,
-        body,
-      });
+      if (sendMarkdown) {
+        await client.sendEvent(currentRoomId, EventType.RoomMessage, {
+          msgtype: MsgType.Text,
+          body,
+          format: "org.matrix.custom.html",
+          formatted_body: markdownToMatrixHtml(body),
+        });
+      } else {
+        await client.sendEvent(currentRoomId, EventType.RoomMessage, {
+          msgtype: MsgType.Text,
+          body,
+        });
+      }
     } catch (err) {
       console.error("Send failed:", err);
     }

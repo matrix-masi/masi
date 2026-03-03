@@ -1,4 +1,4 @@
-import { X, Sun, Moon, EyeOff } from "lucide-react";
+import { X, Sun, Moon, EyeOff, Bold } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useTheme } from "../contexts/ThemeContext";
 import { useSettings } from "../contexts/SettingsContext";
@@ -15,7 +15,7 @@ export default function SettingsModal({
   onLogout,
 }: SettingsModalProps) {
   const { theme, toggleTheme } = useTheme();
-  const { hideMedia, toggleHideMedia } = useSettings();
+  const { hideMedia, toggleHideMedia, sendMarkdown, toggleSendMarkdown } = useSettings();
 
   if (!open || typeof document === "undefined") return null;
 
@@ -75,6 +75,30 @@ export default function SettingsModal({
             <h3 className="text-[0.85rem] font-semibold uppercase tracking-wide text-muted">
               Messages
             </h3>
+            <div className="flex items-center justify-between rounded-lg bg-surface2 px-4 py-3">
+              <div className="flex items-center gap-3">
+                <Bold size={18} className="text-muted" />
+                <div>
+                  <span className="text-[0.9rem]">Send markdown formatting</span>
+                  <p className="text-[0.75rem] text-muted">
+                    Sends rich text so other Matrix clients render formatting
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={toggleSendMarkdown}
+                className={`relative h-7 w-[52px] shrink-0 rounded-full transition-colors ${sendMarkdown ? "bg-accent" : "bg-border"}`}
+                title={sendMarkdown ? "Send plain text messages" : "Send markdown formatting"}
+              >
+                <span
+                  className={`absolute top-0.5 left-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-accent text-white transition-transform ${
+                    sendMarkdown ? "translate-x-[24px]" : ""
+                  }`}
+                >
+                  <Bold size={12} />
+                </span>
+              </button>
+            </div>
             <div className="flex items-center justify-between rounded-lg bg-surface2 px-4 py-3">
               <div className="flex items-center gap-3">
                 <EyeOff size={18} className="text-muted" />
