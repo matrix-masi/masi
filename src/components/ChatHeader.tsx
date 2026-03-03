@@ -12,6 +12,7 @@ interface ChatHeaderProps {
   onOpenAddToFavourites: () => void;
   onDeleteFromFavourites?: () => void;
   onDeleteFavouritesList?: () => void;
+  onLeaveRoom?: () => void;
 }
 
 export default function ChatHeader({
@@ -23,6 +24,7 @@ export default function ChatHeader({
   onOpenAddToFavourites,
   onDeleteFromFavourites,
   onDeleteFavouritesList,
+  onLeaveRoom,
 }: ChatHeaderProps) {
   const { client, currentRoomId, openPlaylist } = useMatrix();
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -74,6 +76,29 @@ export default function ChatHeader({
           >
             {selectMode ? <X size={18} /> : <CheckSquare size={18} />}
           </button>
+          <div className="relative" ref={settingsRef}>
+            <button
+              onClick={() => setSettingsOpen((o) => !o)}
+              title="Room settings"
+              className="rounded-sm p-1.5 text-muted transition-colors hover:bg-surface2 hover:text-foreground"
+            >
+              <Settings size={18} />
+            </button>
+            {settingsOpen && (
+              <div className="absolute right-0 top-full z-10 mt-1 min-w-[10rem] rounded-md border border-border bg-surface py-1 shadow-lg">
+                <button
+                  onClick={() => {
+                    onLeaveRoom?.();
+                    setSettingsOpen(false);
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-[0.9rem] text-red-400 transition-colors hover:bg-surface2"
+                >
+                  <Trash2 size={16} />
+                  Leave room
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       )}
 

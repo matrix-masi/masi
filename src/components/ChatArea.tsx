@@ -57,14 +57,14 @@ export default function ChatArea({ onOpenSidebar }: ChatAreaProps) {
     }
   }, [client, currentRoomId, selectedEventIds, exitSelectMode]);
 
-  const deleteFavouritesList = useCallback(async () => {
+  const leaveCurrentRoom = useCallback(async () => {
     if (!client || !currentRoomId) return;
     const roomIdToLeave = currentRoomId;
     try {
       await client.leave(roomIdToLeave);
       setCurrentRoomId(null);
     } catch (err) {
-      console.error("Failed to delete favourites list:", err);
+      console.error("Failed to leave room:", err);
     }
   }, [client, currentRoomId, setCurrentRoomId]);
 
@@ -81,7 +81,8 @@ export default function ChatArea({ onOpenSidebar }: ChatAreaProps) {
         }}
         onOpenAddToFavourites={() => setShowAddToFavs(true)}
         onDeleteFromFavourites={deleteFromFavourites}
-        onDeleteFavouritesList={deleteFavouritesList}
+        onDeleteFavouritesList={leaveCurrentRoom}
+        onLeaveRoom={leaveCurrentRoom}
       />
       <CryptoBanner />
       {isFav ? (
