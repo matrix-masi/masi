@@ -199,14 +199,21 @@ export default function FavouritesTimeline({ selectMode, selectedEventIds, toggl
           );
         }
         const sourceId = item.sourceEvent.getId() || "";
+        const isSelected = selectedEventIds.has(sourceId);
         return (
-          <Message
+          <div
             key={item.key}
-            event={item.resolvedEvent}
-            selectMode={selectMode}
-            isSelected={selectedEventIds.has(sourceId)}
-            onToggleSelect={() => toggleEventSelection(sourceId)}
-          />
+            className={`flex w-full flex-col rounded-md transition-colors ${
+              selectMode ? "cursor-pointer hover:bg-surface2/80" : ""
+            }`}
+            onClick={selectMode ? () => toggleEventSelection(sourceId) : undefined}
+          >
+            <Message
+              event={item.resolvedEvent}
+              selectMode={selectMode}
+              isSelected={isSelected}
+            />
+          </div>
         );
       })}
     </div>

@@ -162,16 +162,23 @@ export default function Timeline({ selectMode, selectedEventIds, toggleEventSele
         }
         if (entry.event) {
           const eventId = entry.event.getId() || "";
+          const isSelected = selectedEventIds.has(eventId);
           return (
-            <Message
+            <div
               key={entry.key}
-              event={entry.event}
-              latestEdit={entry.latestEdit}
-              editHistory={entry.editHistory}
-              selectMode={selectMode}
-              isSelected={selectedEventIds.has(eventId)}
-              onToggleSelect={() => toggleEventSelection(eventId)}
-            />
+              className={`flex w-full flex-col rounded-md transition-colors ${
+                selectMode ? "cursor-pointer hover:bg-surface2/80" : ""
+              }`}
+              onClick={selectMode ? () => toggleEventSelection(eventId) : undefined}
+            >
+              <Message
+                event={entry.event}
+                latestEdit={entry.latestEdit}
+                editHistory={entry.editHistory}
+                selectMode={selectMode}
+                isSelected={isSelected}
+              />
+            </div>
           );
         }
         return null;

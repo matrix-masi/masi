@@ -16,7 +16,6 @@ interface MessageProps {
   editHistory?: MatrixEvent[];
   selectMode?: boolean;
   isSelected?: boolean;
-  onToggleSelect?: () => void;
 }
 
 interface MessageContent extends Record<string, unknown> {
@@ -53,7 +52,7 @@ function getHistoryEntries(event: MatrixEvent, editHistory: MatrixEvent[]) {
   return entries.sort((a, b) => b.event.getTs() - a.event.getTs());
 }
 
-export default function Message({ event, latestEdit, editHistory = [], selectMode, isSelected, onToggleSelect }: MessageProps) {
+export default function Message({ event, latestEdit, editHistory = [], selectMode, isSelected }: MessageProps) {
   const { client, openLightbox } = useMatrix();
   const [content, setContent] = useState<MessageContent>(getVisibleContent(event, latestEdit));
   const [undecrypted, setUndecrypted] = useState(isUndecryptedEvent(event));
@@ -111,7 +110,15 @@ export default function Message({ event, latestEdit, editHistory = [], selectMod
         isMe
           ? "self-end rounded-br-[4px] bg-msg-out"
           : "self-start rounded-bl-[4px] bg-msg-in"
-      } ${selectMode && isSelected ? "ring-2 ring-accent/40" : ""}`}
+      } ${
+        selectMode
+          ? "cursor-pointer transition-[box-shadow,filter] duration-150"
+          : ""
+      } ${
+        selectMode && isSelected
+          ? "ring-2 ring-accent/50 shadow-[0_0_0_1px_rgba(0,0,0,0.04)]"
+          : ""
+      }`}
     >
       {!isMe && (
         <div className="mb-0.5 text-[0.72rem] font-semibold text-accent">
@@ -158,33 +165,7 @@ export default function Message({ event, latestEdit, editHistory = [], selectMod
     </div>
   );
 
-  if (!selectMode) return bubble;
-
-  return (
-    <div
-      className={`flex items-start gap-2 cursor-pointer ${isMe ? "self-end" : "self-start"} ${
-        hasBlockCode ? "w-full max-w-full" : "max-w-[75%] max-sm:max-w-[88%]"
-      }`}
-      onClick={onToggleSelect}
-    >
-      <div className="mt-2.5 shrink-0">
-        <div
-          className={`flex h-[18px] w-[18px] items-center justify-center rounded border-2 transition-colors ${
-            isSelected
-              ? "border-accent bg-accent text-white"
-              : "border-muted bg-transparent"
-          }`}
-        >
-          {isSelected && (
-            <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
-              <path d="M1 4L3.5 6.5L9 1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          )}
-        </div>
-      </div>
-      <div className="min-w-0 flex-1 flex flex-col">{bubble}</div>
-    </div>
-  );
+  return bubble;
 }
 
 function MessageEditHistoryModal({
