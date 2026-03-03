@@ -13,6 +13,28 @@ interface PlaylistItem {
   body: string;
 }
 
+function classifyPlaylistItem(
+  content: Record<string, unknown>,
+  playlistShowMessages: boolean
+): "image" | "video" | "text" | null {
+  const msgtype = content.msgtype as string | undefined;
+  if (msgtype === "m.image") return "image";
+  if (msgtype === "m.video") return "video";
+  if (msgtype === "m.text" && playlistShowMessages) return "text";
+
+  // Some clients send media as m.file and rely on MIME type.
+  if (msgtype === "m.file") {
+    const info = content.info as Record<string, unknown> | undefined;
+    const mimetype = info?.mimetype;
+    if (typeof mimetype === "string") {
+      if (mimetype.startsWith("image/")) return "image";
+      if (mimetype.startsWith("video/")) return "video";
+    }
+  }
+
+  return null;
+}
+
 export default function PlaylistViewer() {
   const { client, playlistTarget, closePlaylist } = useMatrix();
   const {
@@ -79,16 +101,22 @@ export default function PlaylistViewer() {
         }
 
         if (!target) continue;
-        const content = target.getContent() as Record<string, unknown>;
-        const msgtype = content.msgtype as string | undefined;
-
-        if (msgtype === "m.image") {
-          resolved.push({ key: ev.getId() || `item-${resolved.length}`, type: "image", content, body: (content.body as string) || "image" });
-        } else if (msgtype === "m.video") {
-          resolved.push({ key: ev.getId() || `item-${resolved.length}`, type: "video", content, body: (content.body as string) || "video" });
-        } else if (msgtype === "m.text" && playlistShowMessages) {
-          resolved.push({ key: ev.getId() || `item-${resolved.length}`, type: "text", content, body: (content.body as string) || "" });
+        if (target.isEncrypted()) {
+          try {
+            await client.decryptEventIfNeeded(target);
+          } catch {
+            continue;
+          }
         }
+        const content = target.getContent() as Record<string, unknown>;
+        const type = classifyPlaylistItem(content, playlistShowMessages);
+        if (!type) continue;
+        resolved.push({
+          key: ev.getId() || `item-${resolved.length}`,
+          type,
+          content,
+          body: (content.body as string) || (type === "text" ? "" : type),
+        });
       }
 
       if (!cancelled) {
@@ -129,10 +157,15 @@ export default function PlaylistViewer() {
       return;
     }
 
+    setMediaSrc(null);
     setLoading(true);
     let cancelled = false;
 
-    fetchMedia(item.content as never, client).then((url) => {
+    const info = item.content.info as Record<string, unknown> | undefined;
+    const hasThumbnail = !!(info?.thumbnail_url || info?.thumbnail_file);
+    const mediaOpts =
+      item.type === "image" && hasThumbnail ? { thumbnail: true } : undefined;
+    fetchMedia(item.content as never, client, mediaOpts).then((url) => {
       if (!cancelled) {
         setMediaSrc(url);
         setLoading(false);
