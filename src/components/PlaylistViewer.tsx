@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { MatrixEvent } from "matrix-js-sdk";
-import { X, Play, Pause, SkipBack, SkipForward, Loader2 } from "lucide-react";
+import { X, Play, Pause, SkipBack, SkipForward, Loader2, Maximize2, Minimize2 } from "lucide-react";
 import { useMatrix } from "../contexts/MatrixContext";
 import { useSettings } from "../contexts/SettingsContext";
 import { parseMatrixToUrl } from "../lib/helpers";
@@ -53,7 +53,11 @@ export default function PlaylistViewer() {
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const mediaContainerRef = useRef<HTMLDivElement>(null);
   const prefetchStarted = useRef<Set<number>>(new Set());
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  /** When fullscreen: true = portrait (stretch height), false = landscape (stretch width), null = not yet known */
+  const [imageIsPortrait, setImageIsPortrait] = useState<boolean | null>(null);
 
   // Resolve playlist items once per roomId (reads directly from room timeline)
   useEffect(() => {
@@ -130,6 +134,11 @@ export default function PlaylistViewer() {
     return () => { cancelled = true; };
   }, [client, roomId, playlistShowMessages]);
 
+  // Reset image orientation when switching to a new image
+  useEffect(() => {
+    setImageIsPortrait(null);
+  }, [currentIndex, mediaSrc]);
+
   // Fetch media for current item and prefetch next
   useEffect(() => {
     if (!client || items.length === 0) {
@@ -205,12 +214,36 @@ export default function PlaylistViewer() {
     };
   }, [playing, currentIndex, items, loading, playlistImageDuration, playlistMessageDuration, goNext]);
 
+  // Fullscreen change listener
+  useEffect(() => {
+    const handler = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener("fullscreenchange", handler);
+    return () => document.removeEventListener("fullscreenchange", handler);
+  }, []);
+
+  const toggleFullscreen = useCallback(async () => {
+    const el = mediaContainerRef.current;
+    if (!el) return;
+    if (document.fullscreenElement) {
+      await document.exitFullscreen();
+    } else {
+      await el.requestFullscreen();
+    }
+  }, []);
+
   // Keyboard controls
   useEffect(() => {
     if (!playlistTarget) return;
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") closePlaylist();
-      else if (e.key === "ArrowRight" || e.key === " ") { e.preventDefault(); goNext(); }
+      if (e.key === "Escape") {
+        if (document.fullscreenElement) {
+          document.exitFullscreen();
+        } else {
+          closePlaylist();
+        }
+      } else if (e.key === "ArrowRight" || e.key === " ") { e.preventDefault(); goNext(); }
       else if (e.key === "ArrowLeft") { e.preventDefault(); goPrev(); }
       else if (e.key === "p" || e.key === "k") setPlaying((p) => !p);
     };
@@ -252,28 +285,52 @@ export default function PlaylistViewer() {
           </p>
         )}
 
-        {item && loading && (
+        {item && loading && item.type === "text" && (
           <Loader2 size={36} className="animate-spin text-neutral-400" />
         )}
 
-        {item && !loading && item.type === "image" && mediaSrc && (
-          <img
-            src={mediaSrc}
-            alt={item.body}
-            className="max-h-[80vh] max-w-[90vw] rounded-sm object-contain"
-          />
-        )}
-
-        {item && !loading && item.type === "video" && mediaSrc && (
-          <video
-            ref={videoRef}
-            src={mediaSrc}
-            controls
-            autoPlay={playing}
-            playsInline
-            onEnded={goNext}
-            className="max-h-[80vh] max-w-[90vw] rounded-sm bg-black"
-          />
+        {/* Media container: fullscreenable for both image and video; kept mounted so fullscreen persists when switching items */}
+        {item && (item.type === "image" || item.type === "video") && (
+          <div
+            ref={mediaContainerRef}
+            className="flex min-h-0 min-w-0 flex-1 items-center justify-center rounded-sm bg-black"
+          >
+            {loading && <Loader2 size={36} className="animate-spin text-neutral-400" />}
+            {!loading && item.type === "image" && mediaSrc && (
+              <img
+                src={mediaSrc}
+                alt={item.body}
+                onLoad={(e) => {
+                  const img = e.currentTarget;
+                  setImageIsPortrait(img.naturalHeight >= img.naturalWidth);
+                }}
+                className={
+                  isFullscreen
+                    ? imageIsPortrait === true
+                      ? "h-full w-auto object-contain"
+                      : imageIsPortrait === false
+                        ? "w-full h-auto object-contain"
+                        : "h-full w-full object-contain"
+                    : "max-h-[80vh] max-w-[90vw] object-contain"
+                }
+              />
+            )}
+            {!loading && item.type === "video" && mediaSrc && (
+              <video
+                ref={videoRef}
+                src={mediaSrc}
+                controls
+                autoPlay={playing}
+                playsInline
+                onEnded={goNext}
+                className={
+                  isFullscreen
+                    ? "h-full w-full bg-black object-contain"
+                    : "max-h-[80vh] max-w-[90vw] bg-black"
+                }
+              />
+            )}
+          </div>
         )}
 
         {item && !loading && item.type === "text" && (
@@ -308,6 +365,15 @@ export default function PlaylistViewer() {
         >
           <SkipForward size={22} />
         </button>
+        {(item?.type === "image" || item?.type === "video") && (
+          <button
+            onClick={toggleFullscreen}
+            title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+            className="rounded-full p-2 text-white transition-colors hover:bg-white/10"
+          >
+            {isFullscreen ? <Minimize2 size={22} /> : <Maximize2 size={22} />}
+          </button>
+        )}
       </div>
 
       {/* Progress bar */}
