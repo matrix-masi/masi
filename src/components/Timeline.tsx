@@ -95,7 +95,14 @@ export default function Timeline() {
           );
         }
         if (entry.event) {
-          return <Message key={entry.key} event={entry.event} />;
+          return (
+            <Message
+              key={entry.key}
+              event={entry.event}
+              latestEdit={entry.latestEdit}
+              editHistory={entry.editHistory}
+            />
+          );
         }
         return null;
       })}

@@ -3,7 +3,8 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Element } from "hast";
 import { MatrixEventEvent, type MatrixEvent } from "matrix-js-sdk";
-import { EyeOff, FileImage, Loader2, Film } from "lucide-react";
+import { EyeOff, FileImage, Loader2, Film, X } from "lucide-react";
+import { createPortal } from "react-dom";
 import { useMatrix } from "../contexts/MatrixContext";
 import { useSettings } from "../contexts/SettingsContext";
 import { shortName, formatTime, isUndecryptedEvent } from "../lib/helpers";
@@ -11,6 +12,8 @@ import { fetchMedia } from "../lib/media";
 
 interface MessageProps {
   event: MatrixEvent;
+  latestEdit?: MatrixEvent;
+  editHistory?: MatrixEvent[];
 }
 
 interface MessageContent extends Record<string, unknown> {
@@ -23,27 +26,64 @@ interface MessageContent extends Record<string, unknown> {
   info?: Record<string, unknown>;
 }
 
-export default function Message({ event }: MessageProps) {
+function getReplacementContent(event: MatrixEvent): MessageContent | null {
+  const content = event.getContent() as Record<string, unknown>;
+  const replacement = content["m.new_content"];
+  if (!replacement || typeof replacement !== "object") return null;
+  return replacement as MessageContent;
+}
+
+function getVisibleContent(event: MatrixEvent, latestEdit?: MatrixEvent): MessageContent {
+  if (!latestEdit) return event.getContent() as MessageContent;
+  return getReplacementContent(latestEdit) || (latestEdit.getContent() as MessageContent);
+}
+
+function getHistoryEntries(event: MatrixEvent, editHistory: MatrixEvent[]) {
+  const entries = [{ id: event.getId() || "original", event, edited: false }];
+  for (const editEvent of editHistory) {
+    entries.push({
+      id: editEvent.getId() || `edit-${entries.length}`,
+      event: editEvent,
+      edited: true,
+    });
+  }
+  return entries.sort((a, b) => b.event.getTs() - a.event.getTs());
+}
+
+export default function Message({ event, latestEdit, editHistory = [] }: MessageProps) {
   const { client, openLightbox } = useMatrix();
-  const [content, setContent] = useState<MessageContent>(
-    event.getContent() as MessageContent
-  );
+  const [content, setContent] = useState<MessageContent>(getVisibleContent(event, latestEdit));
   const [undecrypted, setUndecrypted] = useState(isUndecryptedEvent(event));
   const [eventType, setEventType] = useState(event.getType());
+  const [showHistory, setShowHistory] = useState(false);
+  const isEdited = !!latestEdit;
 
   useEffect(() => {
-    const handler = () => {
+    setContent(getVisibleContent(event, latestEdit));
+    setUndecrypted(isUndecryptedEvent(event));
+    setEventType(event.getType());
+  }, [event, latestEdit]);
+
+  useEffect(() => {
+    const originalHandler = () => {
       if (!event.isDecryptionFailure()) {
-        setContent(event.getContent() as MessageContent);
+        setContent(getVisibleContent(event, latestEdit));
         setUndecrypted(false);
         setEventType(event.getType());
       }
     };
-    event.on(MatrixEventEvent.Decrypted, handler);
-    return () => {
-      event.removeListener(MatrixEventEvent.Decrypted, handler);
+    const editHandler = () => {
+      if (!latestEdit || latestEdit.isDecryptionFailure()) return;
+      setContent(getVisibleContent(event, latestEdit));
     };
-  }, [event]);
+
+    event.on(MatrixEventEvent.Decrypted, originalHandler);
+    latestEdit?.on(MatrixEventEvent.Decrypted, editHandler);
+    return () => {
+      event.removeListener(MatrixEventEvent.Decrypted, originalHandler);
+      latestEdit?.removeListener(MatrixEventEvent.Decrypted, editHandler);
+    };
+  }, [event, latestEdit]);
 
   if (eventType !== "m.room.message" && !undecrypted) return null;
   if (eventType === "m.room.message" && !undecrypted && (!content || !content.msgtype))
@@ -91,8 +131,93 @@ export default function Message({ event }: MessageProps) {
         )}
       </div>
 
-      <div className="mt-0.5 text-right text-[0.65rem] text-muted">{time}</div>
+      <div className="mt-0.5 flex items-center justify-end gap-1 text-[0.65rem] text-muted">
+        {isEdited && (
+          <button
+            type="button"
+            onClick={() => setShowHistory(true)}
+            className="cursor-pointer rounded px-0.5 transition-colors hover:text-foreground hover:underline"
+          >
+            (edited)
+          </button>
+        )}
+        <span>{time}</span>
+      </div>
+
+      {isEdited && showHistory && (
+        <MessageEditHistoryModal
+          onClose={() => setShowHistory(false)}
+          sender={sender}
+          versions={getHistoryEntries(event, editHistory)}
+        />
+      )}
     </div>
+  );
+}
+
+function MessageEditHistoryModal({
+  onClose,
+  sender,
+  versions,
+}: {
+  onClose: () => void;
+  sender: string;
+  versions: { id: string; event: MatrixEvent; edited: boolean }[];
+}) {
+  useEffect(() => {
+    const onEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onEscape);
+    return () => window.removeEventListener("keydown", onEscape);
+  }, [onClose]);
+
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-100 flex items-center justify-center bg-black/75 p-4"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="flex max-h-[80vh] w-[560px] max-w-full flex-col overflow-hidden rounded-[14px] border border-border bg-surface">
+        <div className="flex items-center justify-between border-b border-border px-4 py-3">
+          <h3 className="text-[1rem] font-semibold">Message history</h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-sm p-1 text-muted transition-colors hover:text-foreground"
+            title="Close history"
+          >
+            <X size={18} />
+          </button>
+        </div>
+        <div className="overflow-y-auto px-4 py-3">
+          {versions.map((version, index) => {
+            const body = version.edited
+              ? (getReplacementContent(version.event)?.body as string | undefined) ||
+                ((version.event.getContent() as MessageContent).body as string | undefined)
+              : ((version.event.getContent() as MessageContent).body as string | undefined);
+            return (
+              <div
+                key={version.id}
+                className="mb-2 rounded-[10px] border border-border bg-surface2 p-3 last:mb-0"
+              >
+                <div className="mb-1 flex items-center justify-between text-[0.72rem] text-muted">
+                  <span>{index === 0 ? "Current" : `Version ${versions.length - index}`}</span>
+                  <span>{`${sender} · ${new Date(version.event.getTs()).toLocaleString()}`}</span>
+                </div>
+                <p className="whitespace-pre-wrap break-words text-[0.88rem] leading-[1.4]">
+                  {body || "[No body]"}
+                </p>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>,
+    document.body
   );
 }
 

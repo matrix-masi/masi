@@ -7,19 +7,67 @@ export interface TimelineEntry {
   key: string;
   dateStr?: string;
   event?: MatrixEvent;
+  latestEdit?: MatrixEvent;
+  editHistory?: MatrixEvent[];
+}
+
+function getEditTargetId(event: MatrixEvent): string | null {
+  const content = event.getContent() as Record<string, unknown>;
+  const relation =
+    content["m.relates_to"] as { rel_type?: string; event_id?: string } | undefined;
+  if (relation?.rel_type !== "m.replace" || typeof relation.event_id !== "string") {
+    return null;
+  }
+  return relation.event_id;
 }
 
 function buildEntries(events: MatrixEvent[]): TimelineEntry[] {
   const entries: TimelineEntry[] = [];
+  const eventIds = new Set(
+    events
+      .map((event) => event.getId())
+      .filter((eventId): eventId is string => typeof eventId === "string")
+  );
+  const editsByTarget = new Map<string, MatrixEvent[]>();
+
+  for (const event of events) {
+    const targetId = getEditTargetId(event);
+    if (!targetId || !eventIds.has(targetId)) continue;
+    const edits = editsByTarget.get(targetId) || [];
+    edits.push(event);
+    editsByTarget.set(targetId, edits);
+  }
+
   let lastDateStr: string | null = null;
 
   for (const ev of events) {
+    const targetId = getEditTargetId(ev);
+    if (targetId && eventIds.has(targetId)) {
+      continue;
+    }
+
     const dateStr = formatDate(ev.getDate());
     if (dateStr && dateStr !== lastDateStr) {
       entries.push({ type: "date", key: `date-${dateStr}-${ev.getId()}`, dateStr });
       lastDateStr = dateStr;
     }
-    entries.push({ type: "event", key: ev.getId() || `ev-${entries.length}`, event: ev });
+
+    const eventId = ev.getId() || "";
+    const editHistory = editsByTarget.get(eventId) || [];
+    const latestEdit =
+      editHistory.length > 0
+        ? editHistory.reduce((latest, current) =>
+            current.getTs() > latest.getTs() ? current : latest
+          )
+        : undefined;
+
+    entries.push({
+      type: "event",
+      key: ev.getId() || `ev-${entries.length}`,
+      event: ev,
+      latestEdit,
+      editHistory,
+    });
   }
   return entries;
 }
