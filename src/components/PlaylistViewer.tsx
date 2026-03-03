@@ -56,8 +56,10 @@ export default function PlaylistViewer() {
   const mediaContainerRef = useRef<HTMLDivElement>(null);
   const prefetchStarted = useRef<Set<number>>(new Set());
   const [isFullscreen, setIsFullscreen] = useState(false);
-  /** When fullscreen: true = portrait (stretch height), false = landscape (stretch width), null = not yet known */
-  const [imageIsPortrait, setImageIsPortrait] = useState<boolean | null>(null);
+  /** When fullscreen: image natural size for aspect-ratio vs container comparison; null until loaded */
+  const [imageNaturalSize, setImageNaturalSize] = useState<{ w: number; h: number } | null>(null);
+  /** When fullscreen: force re-run of image fit when viewport size changes (e.g. resize/rotate) */
+  const [fullscreenSize, setFullscreenSize] = useState({ w: 0, h: 0 });
 
   // Resolve playlist items once per roomId (reads directly from room timeline)
   useEffect(() => {
@@ -134,10 +136,19 @@ export default function PlaylistViewer() {
     return () => { cancelled = true; };
   }, [client, roomId, playlistShowMessages]);
 
-  // Reset image orientation when switching to a new image
+  // Reset image natural size when switching to a new image
   useEffect(() => {
-    setImageIsPortrait(null);
+    setImageNaturalSize(null);
   }, [currentIndex, mediaSrc]);
+
+  // When fullscreen, track viewport size so we recalculate image fit on resize/rotate
+  useEffect(() => {
+    if (!isFullscreen) return;
+    const update = () => setFullscreenSize({ w: window.innerWidth, h: window.innerHeight });
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, [isFullscreen]);
 
   // Fetch media for current item and prefetch next
   useEffect(() => {
@@ -217,7 +228,9 @@ export default function PlaylistViewer() {
   // Fullscreen change listener
   useEffect(() => {
     const handler = () => {
-      setIsFullscreen(!!document.fullscreenElement);
+      const full = !!document.fullscreenElement;
+      setIsFullscreen(full);
+      if (full) setFullscreenSize({ w: window.innerWidth, h: window.innerHeight });
     };
     document.addEventListener("fullscreenchange", handler);
     return () => document.removeEventListener("fullscreenchange", handler);
@@ -302,15 +315,19 @@ export default function PlaylistViewer() {
                 alt={item.body}
                 onLoad={(e) => {
                   const img = e.currentTarget;
-                  setImageIsPortrait(img.naturalHeight >= img.naturalWidth);
+                  setImageNaturalSize({ w: img.naturalWidth, h: img.naturalHeight });
                 }}
                 className={
                   isFullscreen
-                    ? imageIsPortrait === true
-                      ? "h-full w-auto object-contain"
-                      : imageIsPortrait === false
-                        ? "w-full h-auto object-contain"
-                        : "h-full w-full object-contain"
+                    ? (() => {
+                        if (!imageNaturalSize || fullscreenSize.h <= 0) return "h-full w-full object-contain";
+                        const imageAspect = imageNaturalSize.w / imageNaturalSize.h;
+                        const containerAspect = fullscreenSize.w / fullscreenSize.h;
+                        // Fill the dimension where there's space: if image is relatively wider than container, fill width; else fill height
+                        return imageAspect > containerAspect
+                          ? "w-full h-auto object-contain"
+                          : "h-full w-auto object-contain";
+                      })()
                     : "max-h-[80vh] max-w-[90vw] object-contain"
                 }
               />
