@@ -1,4 +1,5 @@
-import { CheckSquare, Star, Trash2, Play, X } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
+import { CheckSquare, Star, Trash2, Play, X, Settings } from "lucide-react";
 import { useMatrix } from "../contexts/MatrixContext";
 import { getFavouritesListName } from "../hooks/useFavourites";
 
@@ -10,6 +11,7 @@ interface ChatHeaderProps {
   onToggleSelectMode: () => void;
   onOpenAddToFavourites: () => void;
   onDeleteFromFavourites?: () => void;
+  onDeleteFavouritesList?: () => void;
 }
 
 export default function ChatHeader({
@@ -20,12 +22,26 @@ export default function ChatHeader({
   onToggleSelectMode,
   onOpenAddToFavourites,
   onDeleteFromFavourites,
+  onDeleteFavouritesList,
 }: ChatHeaderProps) {
   const { client, currentRoomId, openPlaylist } = useMatrix();
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsRef = useRef<HTMLDivElement>(null);
 
   const room = currentRoomId ? client?.getRoom(currentRoomId) : null;
   const rawName = room?.name || currentRoomId || "Select a room";
   const name = isFavouritesRoom && room ? getFavouritesListName(room) : rawName;
+
+  useEffect(() => {
+    if (!settingsOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (settingsRef.current && !settingsRef.current.contains(e.target as Node)) {
+        setSettingsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [settingsOpen]);
 
   return (
     <header className="flex items-center gap-2.5 border-b border-border bg-surface px-4 py-3 text-[0.95rem] font-semibold">
@@ -90,6 +106,29 @@ export default function ChatHeader({
               <Play size={18} />
             </button>
           )}
+          <div className="relative" ref={settingsRef}>
+            <button
+              onClick={() => setSettingsOpen((o) => !o)}
+              title="Favourites settings"
+              className="rounded-sm p-1.5 text-muted transition-colors hover:bg-surface2 hover:text-foreground"
+            >
+              <Settings size={18} />
+            </button>
+            {settingsOpen && (
+              <div className="absolute right-0 top-full z-10 mt-1 min-w-[10rem] rounded-md border border-border bg-surface py-1 shadow-lg">
+                <button
+                  onClick={() => {
+                    onDeleteFavouritesList?.();
+                    setSettingsOpen(false);
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-[0.9rem] text-red-400 transition-colors hover:bg-surface2"
+                >
+                  <Trash2 size={16} />
+                  Delete favourites list
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </header>

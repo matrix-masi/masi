@@ -14,7 +14,7 @@ interface ChatAreaProps {
 }
 
 export default function ChatArea({ onOpenSidebar }: ChatAreaProps) {
-  const { client, currentRoomId } = useMatrix();
+  const { client, currentRoomId, setCurrentRoomId } = useMatrix();
   const { isFavouritesRoom } = useFavourites();
   const isFav = isFavouritesRoom(currentRoomId);
 
@@ -57,6 +57,17 @@ export default function ChatArea({ onOpenSidebar }: ChatAreaProps) {
     }
   }, [client, currentRoomId, selectedEventIds, exitSelectMode]);
 
+  const deleteFavouritesList = useCallback(async () => {
+    if (!client || !currentRoomId) return;
+    const roomIdToLeave = currentRoomId;
+    try {
+      await client.leave(roomIdToLeave);
+      setCurrentRoomId(null);
+    } catch (err) {
+      console.error("Failed to delete favourites list:", err);
+    }
+  }, [client, currentRoomId, setCurrentRoomId]);
+
   return (
     <main className="flex min-w-0 flex-1 flex-col">
       <ChatHeader
@@ -70,6 +81,7 @@ export default function ChatArea({ onOpenSidebar }: ChatAreaProps) {
         }}
         onOpenAddToFavourites={() => setShowAddToFavs(true)}
         onDeleteFromFavourites={deleteFromFavourites}
+        onDeleteFavouritesList={deleteFavouritesList}
       />
       <CryptoBanner />
       {isFav ? (
