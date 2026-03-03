@@ -1,6 +1,7 @@
-import { X, Sun, Moon } from "lucide-react";
+import { X, Sun, Moon, EyeOff } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useTheme } from "../contexts/ThemeContext";
+import { useSettings } from "../contexts/SettingsContext";
 
 interface SettingsModalProps {
   open: boolean;
@@ -14,6 +15,7 @@ export default function SettingsModal({
   onLogout,
 }: SettingsModalProps) {
   const { theme, toggleTheme } = useTheme();
+  const { hideMedia, toggleHideMedia } = useSettings();
 
   if (!open || typeof document === "undefined") return null;
 
@@ -51,7 +53,7 @@ export default function SettingsModal({
               </div>
               <button
                 onClick={toggleTheme}
-                className="relative h-7 w-[52px] rounded-full bg-border transition-colors"
+                className={`relative h-7 w-[52px] rounded-full transition-colors ${theme === "light" ? "bg-accent" : "bg-border"}`}
                 title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
               >
                 <span
@@ -64,6 +66,36 @@ export default function SettingsModal({
                   ) : (
                     <Sun size={12} />
                   )}
+                </span>
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-6 space-y-4">
+            <h3 className="text-[0.85rem] font-semibold uppercase tracking-wide text-muted">
+              Messages
+            </h3>
+            <div className="flex items-center justify-between rounded-lg bg-surface2 px-4 py-3">
+              <div className="flex items-center gap-3">
+                <EyeOff size={18} className="text-muted" />
+                <div>
+                  <span className="text-[0.9rem]">Hide media by default</span>
+                  <p className="text-[0.75rem] text-muted">
+                    Images and videos are hidden until you click to reveal them
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={toggleHideMedia}
+                className={`relative h-7 w-[52px] shrink-0 rounded-full transition-colors ${hideMedia ? "bg-accent" : "bg-border"}`}
+                title={hideMedia ? "Show media by default" : "Hide media by default"}
+              >
+                <span
+                  className={`absolute top-0.5 left-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-accent text-white transition-transform ${
+                    hideMedia ? "translate-x-[24px]" : ""
+                  }`}
+                >
+                  <EyeOff size={12} />
                 </span>
               </button>
             </div>

@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { MatrixEventEvent, type MatrixEvent } from "matrix-js-sdk";
+import { EyeOff } from "lucide-react";
 import { useMatrix } from "../contexts/MatrixContext";
+import { useSettings } from "../contexts/SettingsContext";
 import { shortName, formatTime, isUndecryptedEvent } from "../lib/helpers";
 import { fetchMedia } from "../lib/media";
 
@@ -105,7 +107,13 @@ function ImageContent({
   openLightbox,
 }: MessageBodyProps) {
   const { client } = useMatrix();
+  const { hideMedia } = useSettings();
   const [src, setSrc] = useState<string | null>(null);
+  const [revealed, setRevealed] = useState(!hideMedia);
+
+  useEffect(() => {
+    setRevealed(!hideMedia);
+  }, [hideMedia]);
 
   useEffect(() => {
     if (!client) return;
@@ -123,13 +131,34 @@ function ImageContent({
   if (!src) return <>{(content.body as string) || "[image]"}</>;
 
   return (
-    <img
-      src={src}
-      alt={(content.body as string) || "image"}
-      loading="lazy"
-      onClick={() => openLightbox("image", content)}
-      className="mt-1 block max-h-[300px] max-w-full cursor-pointer rounded-sm"
-    />
+    <div className="relative mt-1 inline-block max-w-full">
+      <img
+        src={src}
+        alt={(content.body as string) || "image"}
+        loading="lazy"
+        onClick={() => revealed && openLightbox("image", content)}
+        className={`block max-h-[300px] max-w-full rounded-sm ${revealed ? "cursor-pointer" : ""}`}
+      />
+      {!revealed && (
+        <button
+          type="button"
+          onClick={() => setRevealed(true)}
+          className="absolute inset-0 flex cursor-pointer items-center justify-center rounded-sm bg-black text-[0.8rem] text-neutral-400 transition-opacity hover:text-neutral-200"
+        >
+          Click to reveal
+        </button>
+      )}
+      {revealed && hideMedia && (
+        <button
+          type="button"
+          onClick={() => setRevealed(false)}
+          title="Hide media"
+          className="absolute top-1 left-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-full bg-black/60 text-neutral-300 transition-colors hover:bg-black/80 hover:text-white"
+        >
+          <EyeOff size={13} />
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -138,8 +167,14 @@ function VideoContent({
   openLightbox,
 }: MessageBodyProps) {
   const { client } = useMatrix();
+  const { hideMedia } = useSettings();
   const [src, setSrc] = useState<string | null>(null);
   const [poster, setPoster] = useState<string | null>(null);
+  const [revealed, setRevealed] = useState(!hideMedia);
+
+  useEffect(() => {
+    setRevealed(!hideMedia);
+  }, [hideMedia]);
 
   useEffect(() => {
     if (!client) return;
@@ -160,17 +195,39 @@ function VideoContent({
   if (!src) return <>{(content.body as string) || "[video]"}</>;
 
   return (
-    <video
-      src={src}
-      poster={poster || undefined}
-      controls
-      preload="metadata"
-      playsInline
-      onDoubleClick={(e) => {
-        e.preventDefault();
-        openLightbox("video", content);
-      }}
-      className="mt-1 block max-h-[300px] max-w-full rounded-sm bg-black"
-    />
+    <div className="relative mt-1 inline-block max-w-full">
+      <video
+        src={revealed ? src : undefined}
+        poster={poster || undefined}
+        controls={revealed}
+        preload="metadata"
+        playsInline
+        onDoubleClick={(e) => {
+          if (!revealed) return;
+          e.preventDefault();
+          openLightbox("video", content);
+        }}
+        className="block max-h-[300px] max-w-full rounded-sm bg-black"
+      />
+      {!revealed && (
+        <button
+          type="button"
+          onClick={() => setRevealed(true)}
+          className="absolute inset-0 flex cursor-pointer items-center justify-center rounded-sm bg-black text-[0.8rem] text-neutral-400 transition-opacity hover:text-neutral-200"
+        >
+          Click to reveal
+        </button>
+      )}
+      {revealed && hideMedia && (
+        <button
+          type="button"
+          onClick={() => setRevealed(false)}
+          title="Hide media"
+          className="absolute top-1 left-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-full bg-black/60 text-neutral-300 transition-colors hover:bg-black/80 hover:text-white"
+        >
+          <EyeOff size={13} />
+        </button>
+      )}
+    </div>
   );
 }
