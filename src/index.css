@@ -85,3 +85,17 @@ body {
     transform: rotate(360deg);
   }
 }
+
+@keyframes highlight-flash {
+  0% {
+    box-shadow: 0 0 0 2px var(--color-accent),
+      0 0 12px 2px color-mix(in srgb, var(--color-accent) 40%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 0px transparent, 0 0 0px 0px transparent;
+  }
+}
+
+.highlight-message {
+  animation: highlight-flash 2s ease-out;
+}

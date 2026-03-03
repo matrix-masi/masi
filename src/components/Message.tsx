@@ -3,11 +3,11 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Element } from "hast";
 import { MatrixEventEvent, type MatrixEvent } from "matrix-js-sdk";
-import { EyeOff, FileImage, Loader2, Film, X } from "lucide-react";
+import { EyeOff, FileImage, Loader2, Film, X, MessageSquare } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useMatrix } from "../contexts/MatrixContext";
 import { useSettings } from "../contexts/SettingsContext";
-import { shortName, formatTime, isUndecryptedEvent } from "../lib/helpers";
+import { shortName, formatTime, isUndecryptedEvent, parseMatrixToUrl, type MatrixToLink } from "../lib/helpers";
 import { fetchMedia } from "../lib/media";
 
 interface MessageProps {
@@ -101,6 +101,7 @@ export default function Message({ event, latestEdit, editHistory = [] }: Message
 
   return (
     <div
+      data-event-id={event.getId()}
       className={`relative rounded-[14px] px-3 py-2 text-[0.88rem] leading-[1.45] break-words ${
         hasBlockCode ? "w-full max-w-full" : "max-w-[75%] max-sm:max-w-[88%]"
       } ${
@@ -276,6 +277,82 @@ function asPlainText(value: ReactNode): string {
   return "";
 }
 
+const URL_RE = /https?:\/\/[^\s<>"']*[^\s<>"'.,;:!?)\]}/]/g;
+
+function Linkify({ text }: { text: string }) {
+  const parts: ReactNode[] = [];
+  let lastIndex = 0;
+
+  for (const match of text.matchAll(URL_RE)) {
+    const i = match.index!;
+    if (i > lastIndex) parts.push(text.slice(lastIndex, i));
+
+    const url = match[0];
+    const matrixLink = parseMatrixToUrl(url);
+
+    if (matrixLink) {
+      parts.push(<MatrixToPill key={i} link={matrixLink} href={url} />);
+    } else {
+      parts.push(
+        <a
+          key={i}
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-accent underline break-all hover:opacity-80"
+        >
+          {url}
+        </a>
+      );
+    }
+
+    lastIndex = i + match[0].length;
+  }
+
+  if (lastIndex === 0) return <>{text}</>;
+  if (lastIndex < text.length) parts.push(text.slice(lastIndex));
+  return <>{parts}</>;
+}
+
+function linkifyChildren(children: ReactNode): ReactNode {
+  return Children.map(children, (child) =>
+    typeof child === "string" ? <Linkify text={child} /> : child
+  );
+}
+
+function MatrixToPill({ link, href }: { link: MatrixToLink; href: string }) {
+  const { client, navigateToEvent, setCurrentRoomId } = useMatrix();
+  const room = client?.getRoom(link.roomId);
+  const roomName = room?.name || link.roomId;
+  const isJoined = !!room;
+
+  const handleClick = () => {
+    if (!isJoined) {
+      window.open(href, "_blank", "noopener,noreferrer");
+      return;
+    }
+    if (link.eventId) {
+      navigateToEvent(link.roomId, link.eventId);
+    } else {
+      setCurrentRoomId(link.roomId);
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.85em] font-medium cursor-pointer border-none bg-accent/20 text-accent hover:bg-accent/35 align-baseline leading-[1.5] transition-colors"
+      title={link.eventId ? `Message in ${roomName}` : roomName}
+    >
+      <MessageSquare size={13} className="shrink-0" />
+      <span className="truncate max-w-[200px]">
+        {link.eventId ? `Message in ${roomName}` : roomName}
+      </span>
+    </button>
+  );
+}
+
 function MessageBody({ content, openLightbox }: MessageBodyProps) {
   switch (content.msgtype) {
     case "m.image":
@@ -285,7 +362,7 @@ function MessageBody({ content, openLightbox }: MessageBodyProps) {
     default: {
       const rawBody = (content.body as string) || "";
       if (content.format !== "org.matrix.custom.html") {
-        return <p className="whitespace-pre-wrap break-words">{rawBody}</p>;
+        return <p className="whitespace-pre-wrap break-words"><Linkify text={rawBody} /></p>;
       }
 
       // Ensure fenced code blocks have a newline after the opening fence so
@@ -296,16 +373,24 @@ function MessageBody({ content, openLightbox }: MessageBodyProps) {
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             components={{
-              a: ({ href, children }) => (
-                <a
-                  href={href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-accent underline break-all hover:opacity-80"
-                >
-                  {children}
-                </a>
-              ),
+              a: ({ href, children }) => {
+                if (href) {
+                  const matrixLink = parseMatrixToUrl(href);
+                  if (matrixLink) {
+                    return <MatrixToPill link={matrixLink} href={href} />;
+                  }
+                }
+                return (
+                  <a
+                    href={href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-accent underline break-all hover:opacity-80"
+                  >
+                    {children}
+                  </a>
+                );
+              },
               code: ({
                 node,
                 className,
@@ -397,36 +482,36 @@ function MessageBody({ content, openLightbox }: MessageBodyProps) {
               ),
               li: ({ children }) => (
                 <li className="my-0.25 pl-0.5 [display:list-item]">
-                  {children}
+                  {linkifyChildren(children)}
                 </li>
               ),
               p: ({ children }) => (
                 <p className="block my-0.5 min-h-[1em] [&:first-child]:mt-0 [&:last-child]:mb-0">
-                  {children}
+                  {linkifyChildren(children)}
                 </p>
               ),
               strong: ({ children }) => (
-                <strong className="font-semibold text-inherit">{children}</strong>
+                <strong className="font-semibold text-inherit">{linkifyChildren(children)}</strong>
               ),
               em: ({ children }) => (
-                <em className="italic text-inherit">{children}</em>
+                <em className="italic text-inherit">{linkifyChildren(children)}</em>
               ),
               del: ({ children }) => (
-                <del className="line-through text-inherit">{children}</del>
+                <del className="line-through text-inherit">{linkifyChildren(children)}</del>
               ),
               h1: ({ children }) => (
                 <h1 className="text-[1.1em] font-bold my-0.5 text-inherit">
-                  {children}
+                  {linkifyChildren(children)}
                 </h1>
               ),
               h2: ({ children }) => (
                 <h2 className="text-[1.05em] font-bold my-0.5 text-inherit">
-                  {children}
+                  {linkifyChildren(children)}
                 </h2>
               ),
               h3: ({ children }) => (
                 <h3 className="text-[1em] font-bold my-0.5 text-inherit">
-                  {children}
+                  {linkifyChildren(children)}
                 </h3>
               ),
               blockquote: ({ children }) => (
@@ -451,11 +536,11 @@ function MessageBody({ content, openLightbox }: MessageBodyProps) {
               ),
               th: ({ children }) => (
                 <th className="text-left font-semibold py-0.5 pr-2 text-inherit">
-                  {children}
+                  {linkifyChildren(children)}
                 </th>
               ),
               td: ({ children }) => (
-                <td className="py-0.5 pr-2 text-inherit">{children}</td>
+                <td className="py-0.5 pr-2 text-inherit">{linkifyChildren(children)}</td>
               ),
             }}
           >

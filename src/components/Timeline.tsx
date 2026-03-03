@@ -1,12 +1,12 @@
 import { useEffect, useRef, useCallback } from "react";
-import { RoomEvent, type MatrixEvent as ME } from "matrix-js-sdk";
+import { RoomEvent, Direction, type MatrixEvent as ME } from "matrix-js-sdk";
 import { useMatrix } from "../contexts/MatrixContext";
 import { useTimeline } from "../hooks/useTimeline";
 import HistoryControls from "./HistoryControls";
 import Message from "./Message";
 
 export default function Timeline() {
-  const { client, currentRoomId, setShowCryptoBanner } = useMatrix();
+  const { client, currentRoomId, setShowCryptoBanner, targetEventId, setTargetEventId } = useMatrix();
   const {
     entries,
     isBackPaginating,
@@ -19,6 +19,7 @@ export default function Timeline() {
   const containerRef = useRef<HTMLDivElement>(null);
   const prevRoomRef = useRef<string | null>(null);
   const bottomLockRef = useRef(true);
+  const paginatingToEventRef = useRef(false);
 
   const scrollToBottom = useCallback((instant = false) => {
     requestAnimationFrame(() => {
@@ -34,10 +35,14 @@ export default function Timeline() {
   useEffect(() => {
     if (currentRoomId !== prevRoomRef.current) {
       prevRoomRef.current = currentRoomId;
-      bottomLockRef.current = true;
-      scrollToBottom(true);
+      if (targetEventId) {
+        bottomLockRef.current = false;
+      } else {
+        bottomLockRef.current = true;
+        scrollToBottom(true);
+      }
     }
-  }, [currentRoomId, entries, scrollToBottom]);
+  }, [currentRoomId, entries, scrollToBottom, targetEventId]);
 
   useEffect(() => {
     if (!client || !currentRoomId) return;
@@ -62,6 +67,61 @@ export default function Timeline() {
     );
     if (hasUndecrypted) setShowCryptoBanner(true);
   }, [entries, setShowCryptoBanner]);
+
+  useEffect(() => {
+    if (!targetEventId) return;
+
+    const hasEvent = entries.some(
+      (e) => e.type === "event" && e.event?.getId() === targetEventId
+    );
+
+    if (hasEvent) {
+      requestAnimationFrame(() => {
+        const el = containerRef.current?.querySelector(
+          `[data-event-id="${targetEventId}"]`
+        );
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+          el.classList.add("highlight-message");
+          setTimeout(() => el.classList.remove("highlight-message"), 2000);
+        }
+        setTargetEventId(null);
+      });
+      return;
+    }
+
+    if (paginatingToEventRef.current) return;
+    if (!client || !currentRoomId) {
+      setTargetEventId(null);
+      return;
+    }
+
+    const room = client.getRoom(currentRoomId);
+    if (!room) {
+      setTargetEventId(null);
+      return;
+    }
+
+    paginatingToEventRef.current = true;
+    (async () => {
+      try {
+        for (let i = 0; i < 20; i++) {
+          const token = room
+            .getLiveTimeline()
+            .getPaginationToken(Direction.Backward);
+          if (!token) break;
+          await client.scrollback(room, 50);
+          if (room.getLiveTimeline().getEvents().some((e) => e.getId() === targetEventId)) {
+            bump();
+            return;
+          }
+        }
+        setTargetEventId(null);
+      } finally {
+        paginatingToEventRef.current = false;
+      }
+    })();
+  }, [targetEventId, entries, client, currentRoomId, bump, setTargetEventId]);
 
   const handleScroll = () => {
     const el = containerRef.current;

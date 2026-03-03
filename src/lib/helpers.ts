@@ -80,6 +80,31 @@ export function getImageDimensions(
   });
 }
 
+export interface MatrixToLink {
+  roomId: string;
+  eventId?: string;
+}
+
+export function parseMatrixToUrl(href: string): MatrixToLink | null {
+  try {
+    if (!href.includes("matrix.to/#/")) return null;
+    const idx = href.indexOf("#/");
+    const fragment = href.slice(idx + 2);
+    const [path] = fragment.split("?");
+    const parts = path.split("/");
+    const roomId = decodeURIComponent(parts[0]);
+    if (!roomId.startsWith("!")) return null;
+    let eventId: string | undefined;
+    if (parts.length > 1 && parts[1]) {
+      eventId = decodeURIComponent(parts[1]);
+      if (!eventId.startsWith("$")) eventId = undefined;
+    }
+    return { roomId, eventId };
+  } catch {
+    return null;
+  }
+}
+
 export function getVideoDimensions(
   file: File
 ): Promise<{ width: number; height: number; duration: number } | null> {

@@ -42,6 +42,10 @@ interface MatrixContextValue {
 
   showCryptoBanner: boolean;
   setShowCryptoBanner: (v: boolean) => void;
+
+  targetEventId: string | null;
+  setTargetEventId: (id: string | null) => void;
+  navigateToEvent: (roomId: string, eventId: string) => void;
 }
 
 const MatrixContext = createContext<MatrixContextValue | null>(null);
@@ -64,6 +68,7 @@ export function MatrixProvider({ children }: { children: ReactNode }) {
   const [recoveryError, setRecoveryError] = useState<string | null>(null);
   const [recoveryLoading, setRecoveryLoading] = useState(false);
   const [showCryptoBanner, setShowCryptoBanner] = useState(false);
+  const [targetEventId, setTargetEventId] = useState<string | null>(null);
 
   const recoveryKeyBytesRef = useRef<Uint8Array<ArrayBuffer> | null>(null);
   const recoveryResolveRef = useRef<
@@ -195,6 +200,14 @@ export function MatrixProvider({ children }: { children: ReactNode }) {
     [initClient]
   );
 
+  const navigateToEvent = useCallback(
+    (roomId: string, eventId: string) => {
+      setTargetEventId(eventId);
+      setCurrentRoomId(roomId);
+    },
+    []
+  );
+
   const openLightbox = useCallback(
     (type: "image" | "video", content: Record<string, unknown>) => {
       setLightboxTarget({ type, content });
@@ -306,6 +319,9 @@ export function MatrixProvider({ children }: { children: ReactNode }) {
         recoveryLoading,
         showCryptoBanner,
         setShowCryptoBanner,
+        targetEventId,
+        setTargetEventId,
+        navigateToEvent,
       }}
     >
       {children}
