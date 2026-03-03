@@ -46,6 +46,10 @@ interface MatrixContextValue {
   targetEventId: string | null;
   setTargetEventId: (id: string | null) => void;
   navigateToEvent: (roomId: string, eventId: string) => void;
+
+  playlistTarget: { roomId: string } | null;
+  openPlaylist: (roomId: string) => void;
+  closePlaylist: () => void;
 }
 
 const MatrixContext = createContext<MatrixContextValue | null>(null);
@@ -69,6 +73,7 @@ export function MatrixProvider({ children }: { children: ReactNode }) {
   const [recoveryLoading, setRecoveryLoading] = useState(false);
   const [showCryptoBanner, setShowCryptoBanner] = useState(false);
   const [targetEventId, setTargetEventId] = useState<string | null>(null);
+  const [playlistTarget, setPlaylistTarget] = useState<{ roomId: string } | null>(null);
 
   const recoveryKeyBytesRef = useRef<Uint8Array<ArrayBuffer> | null>(null);
   const recoveryResolveRef = useRef<
@@ -219,6 +224,14 @@ export function MatrixProvider({ children }: { children: ReactNode }) {
     setLightboxTarget(null);
   }, []);
 
+  const openPlaylist = useCallback((roomId: string) => {
+    setPlaylistTarget({ roomId });
+  }, []);
+
+  const closePlaylist = useCallback(() => {
+    setPlaylistTarget(null);
+  }, []);
+
   const openRecoveryModal = useCallback(() => {
     setShowRecoveryModal(true);
     setRecoveryError(null);
@@ -322,6 +335,9 @@ export function MatrixProvider({ children }: { children: ReactNode }) {
         targetEventId,
         setTargetEventId,
         navigateToEvent,
+        playlistTarget,
+        openPlaylist,
+        closePlaylist,
       }}
     >
       {children}

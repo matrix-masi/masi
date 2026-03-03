@@ -4,37 +4,37 @@ overview: "Add a Favourites List feature backed by Matrix rooms named \"Favourit
 todos:
   - id: favourites-hook
     content: Create `useFavourites` hook - detect favourites rooms, separate from regular rooms, provide `createFavouritesList`
-    status: pending
+    status: completed
   - id: sidebar-sections
     content: Update Sidebar with Favourites section (with + button and play buttons) and Regular Rooms section
-    status: pending
+    status: completed
   - id: create-list-modal
     content: Create `CreateFavouritesListModal` component
-    status: pending
+    status: completed
   - id: chatarea-routing
     content: Update ChatArea to route between FavouritesTimeline and Timeline, lift select mode state, hide composer for favourites
-    status: pending
+    status: completed
   - id: favourites-timeline
     content: Create `FavouritesTimeline` - resolve matrix.to links and render referenced events using existing Message component
-    status: pending
+    status: completed
   - id: chatheader-buttons
     content: Update ChatHeader with select mode toggle, star button, and play button for favourites rooms
-    status: pending
+    status: completed
   - id: select-mode
     content: Add select mode support to Timeline and Message (checkboxes, selection highlight)
-    status: pending
+    status: completed
   - id: add-to-favourites-modal
     content: Create `AddToFavouritesModal` - list picker with submit that sends matrix.to links to selected rooms
-    status: pending
+    status: completed
   - id: playlist-settings
     content: Add playlist settings to SettingsContext and SettingsModal (image duration, show messages toggle, message duration)
-    status: pending
+    status: completed
   - id: playlist-viewer
     content: Create `PlaylistViewer` component - fullscreen auto-advancing slideshow with play/pause/next/prev controls
-    status: pending
+    status: completed
   - id: playlist-state
     content: Add playlist target state to MatrixContext and render PlaylistViewer in App.tsx
-    status: pending
+    status: completed
 isProject: false
 ---
 

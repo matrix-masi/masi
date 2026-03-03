@@ -4,6 +4,7 @@ import LoginScreen from "./components/LoginScreen";
 import AppScreen from "./components/AppScreen";
 import RecoveryModal from "./components/RecoveryModal";
 import Lightbox from "./components/Lightbox";
+import PlaylistViewer from "./components/PlaylistViewer";
 
 export default function App() {
   const { client, session, initFromSession } = useMatrix();
@@ -23,6 +24,7 @@ export default function App() {
       <AppScreen />
       <RecoveryModal />
       <Lightbox />
+      <PlaylistViewer />
     </>
   );
 }

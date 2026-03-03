@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
-import { Settings } from "lucide-react";
+import { Settings, Plus, Play } from "lucide-react";
 import { useMatrix } from "../contexts/MatrixContext";
-import { useRoomList } from "../hooks/useRoomList";
+import { useFavourites, getFavouritesListName } from "../hooks/useFavourites";
 import RoomItem from "./RoomItem";
 import SettingsModal from "./SettingsModal";
+import CreateFavouritesListModal from "./CreateFavouritesListModal";
 
 interface SidebarProps {
   open: boolean;
@@ -11,12 +12,13 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ open, onClose }: SidebarProps) {
-  const { client, logout, syncState, currentRoomId, setCurrentRoomId } =
+  const { client, logout, syncState, currentRoomId, setCurrentRoomId, openPlaylist } =
     useMatrix();
   const [filter, setFilter] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [showSettings, setShowSettings] = useState(false);
-  const rooms = useRoomList(filter);
+  const [showCreateList, setShowCreateList] = useState(false);
+  const { favouriteRooms, regularRooms } = useFavourites(filter);
 
   useEffect(() => {
     if (!client) return;
@@ -70,22 +72,89 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
           <span>Syncing rooms…</span>
         </div>
       ) : (
-        <ul className="flex-1 list-none overflow-y-auto">
-          {rooms.map((room) => (
-            <RoomItem
-              key={room.roomId}
-              room={room}
-              active={room.roomId === currentRoomId}
-              onSelect={() => selectRoom(room.roomId)}
-            />
-          ))}
-        </ul>
+        <div className="flex-1 overflow-y-auto">
+          {favouriteRooms.length > 0 && (
+            <div>
+              <div className="flex items-center justify-between px-4 pt-3 pb-1">
+                <span className="text-[0.7rem] font-semibold uppercase tracking-wide text-muted">
+                  Favourites
+                </span>
+                <button
+                  onClick={() => setShowCreateList(true)}
+                  title="Create favourites list"
+                  className="rounded-sm p-0.5 text-muted transition-colors hover:text-foreground"
+                >
+                  <Plus size={15} strokeWidth={2.5} />
+                </button>
+              </div>
+              <ul className="list-none">
+                {favouriteRooms.map((room) => (
+                  <li key={room.roomId} className="relative flex items-center">
+                    <div className="min-w-0 flex-1">
+                      <RoomItem
+                        room={room}
+                        active={room.roomId === currentRoomId}
+                        onSelect={() => selectRoom(room.roomId)}
+                        displayName={getFavouritesListName(room)}
+                      />
+                    </div>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openPlaylist(room.roomId);
+                      }}
+                      title="Play"
+                      className="mr-2 shrink-0 rounded-full p-1.5 text-muted transition-colors hover:bg-surface2 hover:text-accent"
+                    >
+                      <Play size={14} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <div>
+            {favouriteRooms.length > 0 && (
+              <div className="flex items-center px-4 pt-3 pb-1">
+                <span className="text-[0.7rem] font-semibold uppercase tracking-wide text-muted">
+                  Rooms
+                </span>
+              </div>
+            )}
+            {favouriteRooms.length === 0 && (
+              <div className="flex items-center justify-end px-4 pt-2 pb-1">
+                <button
+                  onClick={() => setShowCreateList(true)}
+                  title="Create favourites list"
+                  className="flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-[0.7rem] text-muted transition-colors hover:text-foreground"
+                >
+                  <Plus size={13} strokeWidth={2.5} />
+                  <span>Favourites</span>
+                </button>
+              </div>
+            )}
+            <ul className="list-none">
+              {regularRooms.map((room) => (
+                <RoomItem
+                  key={room.roomId}
+                  room={room}
+                  active={room.roomId === currentRoomId}
+                  onSelect={() => selectRoom(room.roomId)}
+                />
+              ))}
+            </ul>
+          </div>
+        </div>
       )}
       <SettingsModal
         open={showSettings}
         onClose={() => setShowSettings(false)}
         onLogout={logout}
       />
+      {showCreateList && (
+        <CreateFavouritesListModal onClose={() => setShowCreateList(false)} />
+      )}
     </aside>
   );
 }

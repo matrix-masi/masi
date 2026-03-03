@@ -5,7 +5,13 @@ import { useTimeline } from "../hooks/useTimeline";
 import HistoryControls from "./HistoryControls";
 import Message from "./Message";
 
-export default function Timeline() {
+interface TimelineProps {
+  selectMode: boolean;
+  selectedEventIds: Set<string>;
+  toggleEventSelection: (eventId: string) => void;
+}
+
+export default function Timeline({ selectMode, selectedEventIds, toggleEventSelection }: TimelineProps) {
   const { client, currentRoomId, setShowCryptoBanner, targetEventId, setTargetEventId } = useMatrix();
   const {
     entries,
@@ -155,12 +161,16 @@ export default function Timeline() {
           );
         }
         if (entry.event) {
+          const eventId = entry.event.getId() || "";
           return (
             <Message
               key={entry.key}
               event={entry.event}
               latestEdit={entry.latestEdit}
               editHistory={entry.editHistory}
+              selectMode={selectMode}
+              isSelected={selectedEventIds.has(eventId)}
+              onToggleSelect={() => toggleEventSelection(eventId)}
             />
           );
         }

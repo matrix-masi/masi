@@ -11,6 +11,13 @@ interface SettingsContextValue {
   toggleHideMedia: () => void;
   sendMarkdown: boolean;
   toggleSendMarkdown: () => void;
+
+  playlistImageDuration: number;
+  setPlaylistImageDuration: (s: number) => void;
+  playlistShowMessages: boolean;
+  togglePlaylistShowMessages: () => void;
+  playlistMessageDuration: number;
+  setPlaylistMessageDuration: (s: number) => void;
 }
 
 const SettingsContext = createContext<SettingsContextValue | null>(null);
@@ -24,12 +31,32 @@ function loadBool(key: string, fallback: boolean): boolean {
   return fallback;
 }
 
+function loadNumber(key: string, fallback: number): number {
+  try {
+    const v = localStorage.getItem(key);
+    if (v !== null) {
+      const n = Number(v);
+      if (!Number.isNaN(n) && n > 0) return n;
+    }
+  } catch {}
+  return fallback;
+}
+
 export function SettingsProvider({ children }: { children: ReactNode }) {
   const [hideMedia, setHideMedia] = useState(() =>
     loadBool("setting_hideMedia", false),
   );
   const [sendMarkdown, setSendMarkdown] = useState(() =>
     loadBool("setting_sendMarkdown", true),
+  );
+  const [playlistImageDuration, _setPlaylistImageDuration] = useState(() =>
+    loadNumber("setting_playlistImageDuration", 5),
+  );
+  const [playlistShowMessages, setPlaylistShowMessages] = useState(() =>
+    loadBool("setting_playlistShowMessages", true),
+  );
+  const [playlistMessageDuration, _setPlaylistMessageDuration] = useState(() =>
+    loadNumber("setting_playlistMessageDuration", 5),
   );
 
   const toggleHideMedia = useCallback(() => {
@@ -48,6 +75,26 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const togglePlaylistShowMessages = useCallback(() => {
+    setPlaylistShowMessages((prev) => {
+      const next = !prev;
+      localStorage.setItem("setting_playlistShowMessages", String(next));
+      return next;
+    });
+  }, []);
+
+  const setPlaylistImageDuration = useCallback((s: number) => {
+    const clamped = Math.max(1, Math.round(s));
+    _setPlaylistImageDuration(clamped);
+    localStorage.setItem("setting_playlistImageDuration", String(clamped));
+  }, []);
+
+  const setPlaylistMessageDuration = useCallback((s: number) => {
+    const clamped = Math.max(1, Math.round(s));
+    _setPlaylistMessageDuration(clamped);
+    localStorage.setItem("setting_playlistMessageDuration", String(clamped));
+  }, []);
+
   return (
     <SettingsContext.Provider
       value={{
@@ -55,6 +102,12 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         toggleHideMedia,
         sendMarkdown,
         toggleSendMarkdown,
+        playlistImageDuration,
+        setPlaylistImageDuration,
+        playlistShowMessages,
+        togglePlaylistShowMessages,
+        playlistMessageDuration,
+        setPlaylistMessageDuration,
       }}
     >
       {children}

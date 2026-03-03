@@ -1,4 +1,4 @@
-import { X, Sun, Moon, EyeOff, Bold } from "lucide-react";
+import { X, Sun, Moon, EyeOff, Bold, Image, MessageSquare, Clock } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useTheme } from "../contexts/ThemeContext";
 import { useSettings } from "../contexts/SettingsContext";
@@ -20,6 +20,12 @@ export default function SettingsModal({
     toggleHideMedia,
     sendMarkdown,
     toggleSendMarkdown,
+    playlistImageDuration,
+    setPlaylistImageDuration,
+    playlistShowMessages,
+    togglePlaylistShowMessages,
+    playlistMessageDuration,
+    setPlaylistMessageDuration,
   } = useSettings();
 
   if (!open || typeof document === "undefined") return null;
@@ -127,6 +133,80 @@ export default function SettingsModal({
                   <EyeOff size={12} />
                 </span>
               </button>
+            </div>
+          </div>
+
+          <div className="mt-6 space-y-4">
+            <h3 className="text-[0.85rem] font-semibold uppercase tracking-wide text-muted">
+              Playlist
+            </h3>
+            <div className="flex items-center justify-between rounded-lg bg-surface2 px-4 py-3">
+              <div className="flex items-center gap-3">
+                <Image size={18} className="text-muted" />
+                <div>
+                  <span className="text-[0.9rem]">Image display duration</span>
+                  <p className="text-[0.75rem] text-muted">
+                    Seconds each image is shown in playlist mode
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="number"
+                  min={1}
+                  max={120}
+                  value={playlistImageDuration}
+                  onChange={(e) => setPlaylistImageDuration(Number(e.target.value))}
+                  className="w-16 rounded-sm border border-border bg-background px-2 py-1 text-center text-[0.85rem] text-foreground outline-none focus:border-accent"
+                />
+                <span className="text-[0.8rem] text-muted">s</span>
+              </div>
+            </div>
+            <div className="flex items-center justify-between rounded-lg bg-surface2 px-4 py-3">
+              <div className="flex items-center gap-3">
+                <MessageSquare size={18} className="text-muted" />
+                <div>
+                  <span className="text-[0.9rem]">Show messages in playlist</span>
+                  <p className="text-[0.75rem] text-muted">
+                    Include text messages when playing a favourites list
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={togglePlaylistShowMessages}
+                className={`relative h-7 w-[52px] shrink-0 rounded-full transition-colors ${playlistShowMessages ? "bg-accent" : "bg-border"}`}
+                title={playlistShowMessages ? "Hide messages in playlist" : "Show messages in playlist"}
+              >
+                <span
+                  className={`absolute top-0.5 left-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-accent text-white transition-transform ${
+                    playlistShowMessages ? "translate-x-[24px]" : ""
+                  }`}
+                >
+                  <MessageSquare size={12} />
+                </span>
+              </button>
+            </div>
+            <div className="flex items-center justify-between rounded-lg bg-surface2 px-4 py-3">
+              <div className="flex items-center gap-3">
+                <Clock size={18} className="text-muted" />
+                <div>
+                  <span className="text-[0.9rem]">Message display duration</span>
+                  <p className="text-[0.75rem] text-muted">
+                    Seconds each text message is shown in playlist mode
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="number"
+                  min={1}
+                  max={120}
+                  value={playlistMessageDuration}
+                  onChange={(e) => setPlaylistMessageDuration(Number(e.target.value))}
+                  className="w-16 rounded-sm border border-border bg-background px-2 py-1 text-center text-[0.85rem] text-foreground outline-none focus:border-accent"
+                />
+                <span className="text-[0.8rem] text-muted">s</span>
+              </div>
             </div>
           </div>
         </div>

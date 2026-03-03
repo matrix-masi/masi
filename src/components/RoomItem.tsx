@@ -8,13 +8,14 @@ interface RoomItemProps {
   room: Room;
   active: boolean;
   onSelect: () => void;
+  displayName?: string;
 }
 
-export default function RoomItem({ room, active, onSelect }: RoomItemProps) {
+export default function RoomItem({ room, active, onSelect, displayName }: RoomItemProps) {
   const { client } = useMatrix();
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
 
-  const name = room.name || room.roomId;
+  const name = displayName || room.name || room.roomId;
   const initial = (name || "?")[0].toUpperCase();
   const notif = room.getUnreadNotificationCount(NotificationCountType.Total) || 0;
   const lastEvent = room.timeline[room.timeline.length - 1];
