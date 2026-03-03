@@ -1,5 +1,6 @@
 import { Children, isValidElement, useEffect, useState, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
+import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import type { Element } from "hast";
 import { MatrixEventEvent, type MatrixEvent } from "matrix-js-sdk";
@@ -383,7 +384,7 @@ function MessageBody({ content, openLightbox }: MessageBodyProps) {
       return (
         <div className="msg-markdown text-foreground text-[0.88rem] leading-[1.45] [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
           <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
+            remarkPlugins={[remarkGfm, remarkBreaks]}
             components={{
               a: ({ href, children }) => {
                 if (href) {

@@ -19,6 +19,9 @@ export default function Timeline({ selectMode, selectedEventIds, toggleEventSele
     canPaginate,
     loadPreviousMessages,
     loadMessagesToDate,
+    loadBetweenDates,
+    clearDateRange,
+    dateRange,
     bump,
   } = useTimeline(client, currentRoomId);
 
@@ -147,6 +150,9 @@ export default function Timeline({ selectMode, selectedEventIds, toggleEventSele
         isLoading={isBackPaginating}
         onLoadMore={() => loadPreviousMessages()}
         onLoadToDate={loadMessagesToDate}
+        onLoadBetweenDates={loadBetweenDates}
+        dateRange={dateRange}
+        onClearDateRange={clearDateRange}
       />
 
       {entries.map((entry) => {

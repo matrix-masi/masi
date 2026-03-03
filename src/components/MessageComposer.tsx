@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, type FormEvent, type ChangeEvent } from "react";
+import { useState, useRef, useCallback, type FormEvent, type ChangeEvent, type KeyboardEvent } from "react";
 import { EventType, MsgType } from "matrix-js-sdk";
 import { useMatrix } from "../contexts/MatrixContext";
 import { useSettings } from "../contexts/SettingsContext";
@@ -133,8 +133,8 @@ export default function MessageComposer() {
             className="hidden"
           />
         </label>
-        <input
-          type="text"
+        <textarea
+          rows={1}
           placeholder="Message…"
           autoComplete="off"
           value={message}
@@ -142,7 +142,13 @@ export default function MessageComposer() {
             setMessage(e.target.value);
             handleTyping();
           }}
-          className="min-w-0 flex-1 rounded-sm border border-border bg-background px-3.5 py-2.5 text-[0.9rem] text-foreground outline-none transition-colors focus:border-accent"
+          onKeyDown={(e: KeyboardEvent<HTMLTextAreaElement>) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              (e.target as HTMLTextAreaElement).form?.requestSubmit();
+            }
+          }}
+          className="min-w-0 flex-1 resize-none rounded-sm border border-border bg-background px-3.5 py-2.5 text-[0.9rem] text-foreground outline-none transition-colors focus:border-accent"
         />
         <button
           type="submit"

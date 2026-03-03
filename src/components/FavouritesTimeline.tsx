@@ -29,6 +29,9 @@ export default function FavouritesTimeline({ selectMode, selectedEventIds, toggl
     canPaginate,
     loadPreviousMessages,
     loadMessagesToDate,
+    loadBetweenDates,
+    clearDateRange,
+    dateRange,
     bump,
   } = useTimeline(client, currentRoomId);
 
@@ -178,6 +181,9 @@ export default function FavouritesTimeline({ selectMode, selectedEventIds, toggl
         isLoading={isBackPaginating}
         onLoadMore={() => loadPreviousMessages()}
         onLoadToDate={loadMessagesToDate}
+        onLoadBetweenDates={loadBetweenDates}
+        dateRange={dateRange}
+        onClearDateRange={clearDateRange}
       />
 
       {resolved.map((item) => {

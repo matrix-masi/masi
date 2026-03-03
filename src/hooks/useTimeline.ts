@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { Direction, type MatrixClient, type Room, type MatrixEvent } from "matrix-js-sdk";
 import { formatDate } from "../lib/helpers";
 
@@ -72,10 +72,17 @@ function buildEntries(events: MatrixEvent[]): TimelineEntry[] {
   return entries;
 }
 
+export type DateRange = { from: Date; to: Date };
+
 export function useTimeline(client: MatrixClient | null, roomId: string | null) {
   const [isBackPaginating, setIsBackPaginating] = useState(false);
   const [version, setVersion] = useState(0);
+  const [dateRange, setDateRange] = useState<DateRange | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    setDateRange(null);
+  }, [roomId]);
 
   const bump = useCallback(() => setVersion((v) => v + 1), []);
 
@@ -88,9 +95,17 @@ export function useTimeline(client: MatrixClient | null, roomId: string | null) 
     void version;
     const room = getRoom();
     if (!room) return [];
-    const events = room.getLiveTimeline().getEvents();
+    let events = room.getLiveTimeline().getEvents();
+    if (dateRange) {
+      const fromTs = dateRange.from.getTime();
+      const toTs = dateRange.to.getTime();
+      events = events.filter((ev) => {
+        const ts = ev.getTs();
+        return ts >= fromTs && ts <= toTs;
+      });
+    }
     return buildEntries(events);
-  }, [getRoom, version]);
+  }, [getRoom, version, dateRange]);
 
   const canPaginate = useCallback((): boolean => {
     const room = getRoom();
@@ -145,12 +160,49 @@ export function useTimeline(client: MatrixClient | null, roomId: string | null) 
     [isBackPaginating, client, roomId, bump]
   );
 
+  const loadBetweenDates = useCallback(
+    async (from: Date, to: Date) => {
+      if (isBackPaginating || !client || !roomId) return;
+      const room = client.getRoom(roomId);
+      if (!room) return;
+      if (from.getTime() > to.getTime()) return;
+
+      setDateRange({ from, to });
+      setIsBackPaginating(true);
+      try {
+        const fromTs = from.getTime();
+        while (true) {
+          const events = room.getLiveTimeline().getEvents();
+          const oldest = events[0];
+          const token = room.getLiveTimeline().getPaginationToken(Direction.Backward);
+          if (!token) break;
+          if (oldest?.getTs() != null && oldest.getTs() <= fromTs) break;
+          await client.scrollback(room, 50);
+        }
+        bump();
+      } catch (err) {
+        console.error("Failed to load messages between dates:", err);
+      } finally {
+        setIsBackPaginating(false);
+      }
+    },
+    [isBackPaginating, client, roomId, bump]
+  );
+
+  const clearDateRange = useCallback(() => {
+    setDateRange(null);
+    bump();
+  }, [bump]);
+
   return {
     entries: getEntries(),
     isBackPaginating,
     canPaginate: canPaginate(),
     loadPreviousMessages,
     loadMessagesToDate,
+    loadBetweenDates,
+    clearDateRange,
+    dateRange,
     scrollRef,
     bump,
   };
