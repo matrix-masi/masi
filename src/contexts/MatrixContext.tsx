@@ -241,10 +241,25 @@ export function MatrixProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      const cryptoModule = clientRef.current?.getCrypto();
-      if (!cryptoModule) {
-        setRecoveryError("Encryption is not available");
+      const c = clientRef.current;
+      if (!c) {
+        setRecoveryError("Client is not initialized");
         return;
+      }
+
+      let cryptoModule = c.getCrypto();
+      if (!cryptoModule) {
+        try {
+          await c.initRustCrypto();
+          setCryptoAvailable(true);
+          cryptoModule = c.getCrypto();
+        } catch (initErr) {
+          console.error("Crypto initialization failed:", initErr);
+        }
+        if (!cryptoModule) {
+          setRecoveryError("Encryption could not be initialized");
+          return;
+        }
       }
 
       setRecoveryLoading(true);
@@ -252,6 +267,7 @@ export function MatrixProvider({ children }: { children: ReactNode }) {
 
       try {
         await cryptoModule.loadSessionBackupPrivateKeyFromSecretStorage();
+        await cryptoModule.checkKeyBackupAndEnable();
         setShowRecoveryModal(false);
         setShowCryptoBanner(false);
       } catch (err: unknown) {
