@@ -16,6 +16,8 @@ interface MessageProps {
 interface MessageContent extends Record<string, unknown> {
   msgtype?: string;
   body?: string;
+  format?: string;
+  formatted_body?: string;
   url?: string;
   file?: Record<string, unknown>;
   info?: Record<string, unknown>;
@@ -54,6 +56,7 @@ export default function Message({ event }: MessageProps) {
     content.msgtype !== "m.image" &&
     content.msgtype !== "m.video" &&
     typeof content.body === "string" &&
+    content.format === "org.matrix.custom.html" &&
     content.body.includes("```");
 
   return (
@@ -94,6 +97,14 @@ export default function Message({ event }: MessageProps) {
 }
 
 interface MessageBodyProps {
+  content: MessageContent;
+  openLightbox: (
+    type: "image" | "video",
+    content: Record<string, unknown>
+  ) => void;
+}
+
+interface MediaContentProps {
   content: MessageContent;
   openLightbox: (
     type: "image" | "video",
@@ -148,6 +159,10 @@ function MessageBody({ content, openLightbox }: MessageBodyProps) {
       return <VideoContent content={content} openLightbox={openLightbox} />;
     default: {
       const rawBody = (content.body as string) || "";
+      if (content.format !== "org.matrix.custom.html") {
+        return <p className="whitespace-pre-wrap break-words">{rawBody}</p>;
+      }
+
       // Ensure fenced code blocks have a newline after the opening fence so
       // they aren't misparsed (e.g. as lists) or produce empty blocks.
       const body = rawBody.replace(/```(\w*)([^\n\r])/g, "```$1\n$2");
@@ -361,7 +376,7 @@ function MediaLoadingPlaceholder({
 function ImageContent({
   content,
   openLightbox,
-}: MessageBodyProps) {
+}: MediaContentProps) {
   const { client } = useMatrix();
   const { hideMedia } = useSettings();
   const [src, setSrc] = useState<string | null>(null);
@@ -427,7 +442,7 @@ function ImageContent({
 function VideoContent({
   content,
   openLightbox,
-}: MessageBodyProps) {
+}: MediaContentProps) {
   const { client } = useMatrix();
   const { hideMedia } = useSettings();
   const [src, setSrc] = useState<string | null>(null);

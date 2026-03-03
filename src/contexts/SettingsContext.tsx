@@ -50,7 +50,12 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
   return (
     <SettingsContext.Provider
-      value={{ hideMedia, toggleHideMedia, sendMarkdown, toggleSendMarkdown }}
+      value={{
+        hideMedia,
+        toggleHideMedia,
+        sendMarkdown,
+        toggleSendMarkdown,
+      }}
     >
       {children}
     </SettingsContext.Provider>

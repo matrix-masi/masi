@@ -15,7 +15,12 @@ export default function SettingsModal({
   onLogout,
 }: SettingsModalProps) {
   const { theme, toggleTheme } = useTheme();
-  const { hideMedia, toggleHideMedia, sendMarkdown, toggleSendMarkdown } = useSettings();
+  const {
+    hideMedia,
+    toggleHideMedia,
+    sendMarkdown,
+    toggleSendMarkdown,
+  } = useSettings();
 
   if (!open || typeof document === "undefined") return null;
 
