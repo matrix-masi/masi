@@ -1,4 +1,4 @@
-import { X, Sun, Moon, EyeOff, Bold, Image, MessageSquare, Clock } from "lucide-react";
+import { X, Sun, Moon, EyeOff, Bold, Image, MessageSquare, Clock, CheckCircle } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useTheme } from "../contexts/ThemeContext";
 import { useSettings } from "../contexts/SettingsContext";
@@ -20,6 +20,8 @@ export default function SettingsModal({
     toggleHideMedia,
     sendMarkdown,
     toggleSendMarkdown,
+    sendReadReceipts,
+    toggleSendReadReceipts,
     playlistImageDuration,
     setPlaylistImageDuration,
     playlistShowMessages,
@@ -131,6 +133,30 @@ export default function SettingsModal({
                   }`}
                 >
                   <EyeOff size={12} />
+                </span>
+              </button>
+            </div>
+            <div className="flex items-center justify-between rounded-lg bg-surface2 px-4 py-3">
+              <div className="flex items-center gap-3">
+                <CheckCircle size={18} className="text-muted" />
+                <div>
+                  <span className="text-[0.9rem]">Send read receipts?</span>
+                  <p className="text-[0.75rem] text-muted">
+                    Let others see when you've read messages. When on, receipts are sent when you open a chat and when you use Mark all as read.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={toggleSendReadReceipts}
+                className={`relative h-7 w-[52px] shrink-0 rounded-full transition-colors ${sendReadReceipts ? "bg-accent" : "bg-border"}`}
+                title={sendReadReceipts ? "Stop sending read receipts" : "Send read receipts"}
+              >
+                <span
+                  className={`absolute top-0.5 left-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-accent text-white transition-transform ${
+                    sendReadReceipts ? "translate-x-[24px]" : ""
+                  }`}
+                >
+                  <CheckCircle size={12} />
                 </span>
               </button>
             </div>

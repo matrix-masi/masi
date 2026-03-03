@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
-import { CheckSquare, Star, Trash2, Play, X, Settings } from "lucide-react";
+import { CheckSquare, Star, Trash2, Play, X, Settings, CheckCircle } from "lucide-react";
 import { useMatrix } from "../contexts/MatrixContext";
+import { useSettings } from "../contexts/SettingsContext";
 import { getFavouritesListName } from "../hooks/useFavourites";
 
 interface ChatHeaderProps {
@@ -27,6 +28,7 @@ export default function ChatHeader({
   onLeaveRoom,
 }: ChatHeaderProps) {
   const { client, currentRoomId, openPlaylist } = useMatrix();
+  const { sendReadReceipts } = useSettings();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsRef = useRef<HTMLDivElement>(null);
 
@@ -86,6 +88,31 @@ export default function ChatHeader({
             </button>
             {settingsOpen && (
               <div className="absolute right-0 top-full z-10 mt-1 min-w-[10rem] rounded-md border border-border bg-surface py-1 shadow-lg">
+                <button
+                  onClick={async () => {
+                    setSettingsOpen(false);
+                    if (!client || !currentRoomId) return;
+                    const r = client.getRoom(currentRoomId);
+                    if (!r) return;
+                    const events = r.getLiveTimeline().getEvents();
+                    const lastEvent = events[events.length - 1];
+                    const eventId = lastEvent?.getId();
+                    if (!eventId) return;
+                    try {
+                      if (sendReadReceipts) {
+                        await client.setRoomReadMarkers(currentRoomId, eventId, lastEvent);
+                      } else {
+                        await client.setRoomReadMarkers(currentRoomId, eventId);
+                      }
+                    } catch (err) {
+                      console.error("Failed to mark room as read:", err);
+                    }
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-[0.9rem] text-foreground transition-colors hover:bg-surface2"
+                >
+                  <CheckCircle size={16} />
+                  Mark all as read
+                </button>
                 <button
                   onClick={() => {
                     onLeaveRoom?.();

@@ -11,6 +11,8 @@ interface SettingsContextValue {
   toggleHideMedia: () => void;
   sendMarkdown: boolean;
   toggleSendMarkdown: () => void;
+  sendReadReceipts: boolean;
+  toggleSendReadReceipts: () => void;
 
   playlistImageDuration: number;
   setPlaylistImageDuration: (s: number) => void;
@@ -49,6 +51,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const [sendMarkdown, setSendMarkdown] = useState(() =>
     loadBool("setting_sendMarkdown", true),
   );
+  const [sendReadReceipts, setSendReadReceipts] = useState(() =>
+    loadBool("setting_sendReadReceipts", true),
+  );
   const [playlistImageDuration, _setPlaylistImageDuration] = useState(() =>
     loadNumber("setting_playlistImageDuration", 5),
   );
@@ -71,6 +76,14 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     setSendMarkdown((prev) => {
       const next = !prev;
       localStorage.setItem("setting_sendMarkdown", String(next));
+      return next;
+    });
+  }, []);
+
+  const toggleSendReadReceipts = useCallback(() => {
+    setSendReadReceipts((prev) => {
+      const next = !prev;
+      localStorage.setItem("setting_sendReadReceipts", String(next));
       return next;
     });
   }, []);
@@ -102,6 +115,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         toggleHideMedia,
         sendMarkdown,
         toggleSendMarkdown,
+        sendReadReceipts,
+        toggleSendReadReceipts,
         playlistImageDuration,
         setPlaylistImageDuration,
         playlistShowMessages,

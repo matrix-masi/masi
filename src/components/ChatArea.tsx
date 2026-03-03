@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useMatrix } from "../contexts/MatrixContext";
+import { useSettings } from "../contexts/SettingsContext";
 import { useFavourites } from "../hooks/useFavourites";
 import ChatHeader from "./ChatHeader";
 import CryptoBanner from "./CryptoBanner";
@@ -15,8 +16,22 @@ interface ChatAreaProps {
 
 export default function ChatArea({ onOpenSidebar }: ChatAreaProps) {
   const { client, currentRoomId, setCurrentRoomId } = useMatrix();
+  const { sendReadReceipts } = useSettings();
   const { isFavouritesRoom } = useFavourites();
   const isFav = isFavouritesRoom(currentRoomId);
+
+  useEffect(() => {
+    if (!client || !currentRoomId || isFav || !sendReadReceipts) return;
+    const room = client.getRoom(currentRoomId);
+    if (!room) return;
+    const events = room.getLiveTimeline().getEvents();
+    const lastEvent = events[events.length - 1];
+    const eventId = lastEvent?.getId();
+    if (!eventId) return;
+    client.setRoomReadMarkers(currentRoomId, eventId, lastEvent).catch((err) => {
+      console.error("Failed to send read receipt:", err);
+    });
+  }, [client, currentRoomId, isFav, sendReadReceipts]);
 
   const [selectMode, setSelectMode] = useState(false);
   const [selectedEventIds, setSelectedEventIds] = useState<Set<string>>(new Set());
