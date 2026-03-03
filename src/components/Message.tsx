@@ -1,4 +1,7 @@
-import { useState, useEffect } from "react";
+import { Children, isValidElement, useEffect, useState, type ReactNode } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import type { Element } from "hast";
 import { MatrixEventEvent, type MatrixEvent } from "matrix-js-sdk";
 import { EyeOff, FileImage, Loader2, Film } from "lucide-react";
 import { useMatrix } from "../contexts/MatrixContext";
@@ -47,10 +50,17 @@ export default function Message({ event }: MessageProps) {
   const isMe = event.getSender() === client?.getUserId();
   const sender = shortName(event.getSender(), client);
   const time = formatTime(event.getDate());
+  const hasBlockCode =
+    content.msgtype !== "m.image" &&
+    content.msgtype !== "m.video" &&
+    typeof content.body === "string" &&
+    content.body.includes("```");
 
   return (
     <div
-      className={`relative max-w-[75%] rounded-[14px] px-3 py-2 text-[0.88rem] leading-[1.45] break-words max-sm:max-w-[88%] ${
+      className={`relative rounded-[14px] px-3 py-2 text-[0.88rem] leading-[1.45] break-words ${
+        hasBlockCode ? "w-full max-w-full" : "max-w-[75%] max-sm:max-w-[88%]"
+      } ${
         isMe
           ? "self-end rounded-br-[4px] bg-msg-out"
           : "self-start rounded-bl-[4px] bg-msg-in"
@@ -91,14 +101,229 @@ interface MessageBodyProps {
   ) => void;
 }
 
+const KNOWN_CODE_LANGS = new Set([
+  "c",
+  "cpp",
+  "csharp",
+  "css",
+  "go",
+  "html",
+  "java",
+  "javascript",
+  "js",
+  "json",
+  "kotlin",
+  "php",
+  "python",
+  "py",
+  "ruby",
+  "rust",
+  "shell",
+  "sh",
+  "sql",
+  "swift",
+  "ts",
+  "tsx",
+  "typescript",
+  "xml",
+  "yaml",
+  "yml",
+]);
+
+function asPlainText(value: ReactNode): string {
+  if (typeof value === "string") return value;
+  if (typeof value === "number") return String(value);
+  if (Array.isArray(value)) return value.map((v) => asPlainText(v)).join("");
+  if (isValidElement<{ children?: ReactNode }>(value)) {
+    return asPlainText(value.props.children);
+  }
+  return "";
+}
+
 function MessageBody({ content, openLightbox }: MessageBodyProps) {
   switch (content.msgtype) {
     case "m.image":
       return <ImageContent content={content} openLightbox={openLightbox} />;
     case "m.video":
       return <VideoContent content={content} openLightbox={openLightbox} />;
-    default:
-      return <>{(content.body as string) || ""}</>;
+    default: {
+      const rawBody = (content.body as string) || "";
+      // Ensure fenced code blocks have a newline after the opening fence so
+      // they aren't misparsed (e.g. as lists) or produce empty blocks.
+      const body = rawBody.replace(/```(\w*)([^\n\r])/g, "```$1\n$2");
+      return (
+        <div className="msg-markdown text-foreground text-[0.88rem] leading-[1.45] [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            components={{
+              a: ({ href, children }) => (
+                <a
+                  href={href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-accent underline break-all hover:opacity-80"
+                >
+                  {children}
+                </a>
+              ),
+              code: ({
+                node,
+                className,
+                children,
+              }: {
+                node?: Element;
+                className?: string;
+                children?: ReactNode;
+              }) => {
+                const isBlock = className?.startsWith("language-");
+                if (isBlock) return <code className={className}>{children}</code>;
+                const text = asPlainText(children);
+                return (
+                  <code className="rounded bg-muted/60 px-1 py-0.5 text-[0.9em] font-normal">
+                    {text}
+                  </code>
+                );
+              },
+              pre: ({ children }) => {
+                const first = Children.toArray(children)[0];
+                if (!isValidElement<{ className?: string; children?: ReactNode }>(first))
+                  return (
+                    <pre className="my-1 w-full min-w-0 overflow-x-auto rounded-md border border-[var(--color-border)] px-3 py-2 text-[0.85em] font-mono">
+                      {children}
+                    </pre>
+                  );
+
+                const langClass = first.props.className || "";
+                const langMatch = /language-([\w+-]+)/.exec(langClass);
+                const lang = langMatch?.[1]?.toLowerCase() || "";
+                let code = asPlainText(first.props.children).replace(/\n$/, "");
+                const lines = code.split(/\r?\n/);
+
+                if (lang && lines[0]?.trim().toLowerCase() === lang) {
+                  lines.shift();
+                } else if (!lang && lines.length > 1) {
+                  const possibleLabel = lines[0]?.trim().toLowerCase();
+                  if (possibleLabel && KNOWN_CODE_LANGS.has(possibleLabel)) {
+                    lines.shift();
+                  }
+                }
+
+                code = lines.join("\n");
+                const numbered = (code || "").split(/\r?\n/);
+
+                return (
+                  <div
+                    className="my-1 w-full min-w-0 overflow-hidden rounded-md border border-[var(--color-border)]"
+                    style={{
+                      backgroundColor: "var(--color-code-block-bg)",
+                      color: "var(--color-code-block)",
+                    }}
+                  >
+                    <div className="flex w-full">
+                      <div
+                        className="select-none shrink-0 border-r border-[var(--color-border)] px-2 py-2 text-right tabular-nums"
+                        style={{ color: "var(--color-code-block-ln)" }}
+                        aria-hidden
+                      >
+                        {numbered.map((_, i) => (
+                          <div key={i} className="h-[1.45em] leading-[1.45em]">
+                            {i + 1}
+                          </div>
+                        ))}
+                      </div>
+                      <div className="min-w-0 flex-1 overflow-x-auto py-2 pr-3">
+                        {numbered.map((line, i) => (
+                          <div
+                            key={i}
+                            className="pl-3 font-mono text-[0.85em] leading-[1.45em] whitespace-pre"
+                          >
+                            {line || " "}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                );
+              },
+              ul: ({ children }) => (
+                <ul className="my-0.5 list-disc pl-5 [list-style-type:disc]">
+                  {children}
+                </ul>
+              ),
+              ol: ({ children }) => (
+                <ol className="my-0.5 list-decimal pl-5 [list-style-type:decimal]">
+                  {children}
+                </ol>
+              ),
+              li: ({ children }) => (
+                <li className="my-0.25 pl-0.5 [display:list-item]">
+                  {children}
+                </li>
+              ),
+              p: ({ children }) => (
+                <p className="block my-0.5 min-h-[1em] [&:first-child]:mt-0 [&:last-child]:mb-0">
+                  {children}
+                </p>
+              ),
+              strong: ({ children }) => (
+                <strong className="font-semibold text-inherit">{children}</strong>
+              ),
+              em: ({ children }) => (
+                <em className="italic text-inherit">{children}</em>
+              ),
+              del: ({ children }) => (
+                <del className="line-through text-inherit">{children}</del>
+              ),
+              h1: ({ children }) => (
+                <h1 className="text-[1.1em] font-bold my-0.5 text-inherit">
+                  {children}
+                </h1>
+              ),
+              h2: ({ children }) => (
+                <h2 className="text-[1.05em] font-bold my-0.5 text-inherit">
+                  {children}
+                </h2>
+              ),
+              h3: ({ children }) => (
+                <h3 className="text-[1em] font-bold my-0.5 text-inherit">
+                  {children}
+                </h3>
+              ),
+              blockquote: ({ children }) => (
+                <blockquote className="border-l-2 border-muted pl-3 my-0.5 text-muted italic">
+                  {children}
+                </blockquote>
+              ),
+              hr: () => <hr className="border-border my-1 border-t" />,
+              table: ({ children }) => (
+                <div className="my-1 overflow-x-auto">
+                  <table className="w-full border-collapse text-[0.9em]">
+                    {children}
+                  </table>
+                </div>
+              ),
+              thead: ({ children }) => (
+                <thead className="border-b border-border">{children}</thead>
+              ),
+              tbody: ({ children }) => <tbody>{children}</tbody>,
+              tr: ({ children }) => (
+                <tr className="border-b border-border/60">{children}</tr>
+              ),
+              th: ({ children }) => (
+                <th className="text-left font-semibold py-0.5 pr-2 text-inherit">
+                  {children}
+                </th>
+              ),
+              td: ({ children }) => (
+                <td className="py-0.5 pr-2 text-inherit">{children}</td>
+              ),
+            }}
+          >
+            {body}
+          </ReactMarkdown>
+        </div>
+      );
+    }
   }
 }
 

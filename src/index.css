@@ -13,6 +13,9 @@
   --color-danger-hover: #dc2626;
   --color-msg-out: #292940;
   --color-msg-in: #1e1e28;
+  --color-code-block-bg: #1a1a1f;
+  --color-code-block: #efeff1;
+  --color-code-block-ln: #6b6b7b;
   --color-crypto-bg: #2a1f00;
   --color-crypto-border: #5c4a1a;
   --color-crypto-text: #f0c040;
@@ -33,6 +36,9 @@ html.light {
   --color-danger-hover: #dc2626;
   --color-msg-out: #e8e8f4;
   --color-msg-in: #f0f0f5;
+  --color-code-block-bg: #2d2d33;
+  --color-code-block: #efeff1;
+  --color-code-block-ln: #71717a;
   --color-crypto-bg: #fef9e7;
   --color-crypto-border: #d4a916;
   --color-crypto-text: #92750a;
