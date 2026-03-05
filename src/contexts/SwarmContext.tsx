@@ -91,8 +91,16 @@ export function SwarmProvider({ children }: { children: ReactNode }) {
   const [roomListVersion, setRoomListVersion] = useState(0);
   const [hasAnyAccounts, setHasAnyAccounts] = useState(false);
 
-  const [recoveryKeyBytes, setRecoveryKeyBytes] =
+  const [recoveryKeyBytes, setRecoveryKeyBytesState] =
     useState<Uint8Array<ArrayBuffer> | null>(null);
+  const recoveryKeyBytesRef = useRef<Uint8Array<ArrayBuffer> | null>(null);
+  const setRecoveryKeyBytes = useCallback(
+    (bytes: Uint8Array<ArrayBuffer> | null) => {
+      recoveryKeyBytesRef.current = bytes;
+      setRecoveryKeyBytesState(bytes);
+    },
+    [],
+  );
 
   const clientsRef = useRef(clients);
   clientsRef.current = clients;
@@ -134,7 +142,7 @@ export function SwarmProvider({ children }: { children: ReactNode }) {
         timelineSupport: true,
         cryptoCallbacks: {
           getSecretStorageKey: async ({ keys }) => {
-            const rkb = recoveryKeyBytes;
+            const rkb = recoveryKeyBytesRef.current;
             if (rkb) {
               const keyId = Object.keys(keys)[0];
               return [keyId, rkb] as [string, Uint8Array<ArrayBuffer>];
@@ -152,7 +160,9 @@ export function SwarmProvider({ children }: { children: ReactNode }) {
       });
 
       try {
-        await c.initRustCrypto();
+        await c.initRustCrypto({
+          cryptoDatabasePrefix: `matrix-js-sdk-${account.userId}-${account.deviceId}`,
+        });
       } catch (err) {
         console.warn("Crypto init failed for", account.userId, err);
       }
@@ -195,7 +205,7 @@ export function SwarmProvider({ children }: { children: ReactNode }) {
         schedulerRef.current.addSecondaryClient(account.id, c);
       }
     },
-    [bumpRoomList, recoveryKeyBytes],
+    [bumpRoomList],
   );
 
   useEffect(() => {

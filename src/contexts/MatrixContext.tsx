@@ -203,7 +203,14 @@ export function MatrixProvider({ children }: { children: ReactNode }) {
         try {
           let cryptoModule = c.getCrypto();
           if (!cryptoModule) {
-            await c.initRustCrypto();
+            const userId = c.getUserId();
+            const deviceId = c.getDeviceId();
+            await c.initRustCrypto({
+              cryptoDatabasePrefix:
+                userId && deviceId
+                  ? `matrix-js-sdk-${userId}-${deviceId}`
+                  : undefined,
+            });
             cryptoModule = c.getCrypto();
           }
           if (cryptoModule) {
