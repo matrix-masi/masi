@@ -188,3 +188,61 @@ export async function decryptSwarmCredentials(
 ): Promise<string> {
   return decrypt(salt, iv, ciphertext, password);
 }
+
+export async function createMasterLockVerifier(
+  password: string,
+): Promise<{ masterLockSalt: string; masterLockVerifier: string }> {
+  const salt = crypto.getRandomValues(
+    new Uint8Array(16) as Uint8Array<ArrayBuffer>,
+  );
+  const key = await deriveKey(password, salt);
+  const marker = new TextEncoder().encode("master-lock-verify");
+  const encrypted = await crypto.subtle.encrypt(
+    {
+      name: "AES-GCM",
+      iv: new Uint8Array(12) as Uint8Array<ArrayBuffer>,
+    },
+    key,
+    marker,
+  );
+  return {
+    masterLockSalt: toBase64(salt.buffer),
+    masterLockVerifier: toBase64(encrypted),
+  };
+}
+
+export async function verifyMasterLockPassword(
+  password: string,
+  masterLockSalt: string,
+  masterLockVerifier: string,
+): Promise<boolean> {
+  try {
+    const key = await deriveKey(password, fromBase64(masterLockSalt));
+    const decrypted = await crypto.subtle.decrypt(
+      {
+        name: "AES-GCM",
+        iv: new Uint8Array(12) as Uint8Array<ArrayBuffer>,
+      },
+      key,
+      fromBase64(masterLockVerifier),
+    );
+    const text = new TextDecoder().decode(decrypted);
+    return text === "master-lock-verify";
+  } catch {
+    return false;
+  }
+}
+
+export async function encryptAppConfigPayload(
+  plaintext: string,
+  password: string,
+): Promise<{ salt: string; iv: string; ciphertext: string }> {
+  return encrypt(plaintext, password);
+}
+
+export async function decryptAppConfigPayload(
+  payload: { salt: string; iv: string; ciphertext: string },
+  password: string,
+): Promise<string> {
+  return decrypt(payload.salt, payload.iv, payload.ciphertext, password);
+}

@@ -58,6 +58,29 @@ export interface EncryptedPayload {
   payloadType: "appConfig" | "swarmConfig";
 }
 
+export interface SwarmPublicMeta {
+  id: string;
+  name: string;
+  passwordHint?: string;
+  lockSalt?: string;
+  lockVerifier?: string;
+}
+
+export interface EncryptedAppConfigEnvelope {
+  encrypted: true;
+  version: 1;
+  masterPasswordHint?: string;
+  masterLockSalt: string;
+  masterLockVerifier: string;
+  swarms: SwarmPublicMeta[];
+  activeSwarmId: string;
+  payload: {
+    salt: string;
+    iv: string;
+    ciphertext: string;
+  };
+}
+
 export const DEFAULT_PREFERENCES: AppPreferences = {
   theme: "dark",
   hideMedia: false,

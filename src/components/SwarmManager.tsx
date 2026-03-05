@@ -1,9 +1,16 @@
 import { useState, type FormEvent } from "react";
-import { Trash2, Plus, Lock, Unlock, Download, Key } from "lucide-react";
+import { Trash2, Plus, Lock, Unlock, Download, Key, Shield, Eye, EyeOff } from "lucide-react";
 import { useSwarm } from "../contexts/SwarmContext";
 import { useSettings } from "../contexts/SettingsContext";
 import { exportAppConfig, exportSwarmConfig } from "../lib/swarmCrypto";
-import { loadAppConfig } from "../lib/session";
+import {
+  loadAppConfig,
+  isAppConfigEncrypted,
+  enableMasterEncryption,
+  disableMasterEncryption,
+  getEncryptedEnvelope,
+} from "../lib/session";
+import { verifyMasterLockPassword } from "../lib/swarmCrypto";
 import type { Swarm } from "../lib/types";
 
 const SWARM_COLORS = [
@@ -50,11 +57,89 @@ export default function SwarmManager() {
     setSwarmMissedEventsThreshold,
   } = useSettings();
 
+  const encrypted = isAppConfigEncrypted();
+  const [internalsRevealed, setInternalsRevealed] = useState(false);
+  const [revealPassword, setRevealPassword] = useState("");
+  const [revealError, setRevealError] = useState<string | null>(null);
+  const [revealLoading, setRevealLoading] = useState(false);
+
+  const hideInternals = encrypted && !internalsRevealed;
+
+  const handleReveal = async () => {
+    const envelope = getEncryptedEnvelope();
+    if (!envelope) return;
+    setRevealLoading(true);
+    setRevealError(null);
+    const ok = await verifyMasterLockPassword(
+      revealPassword,
+      envelope.masterLockSalt,
+      envelope.masterLockVerifier,
+    );
+    setRevealLoading(false);
+    if (ok) {
+      setInternalsRevealed(true);
+      setRevealPassword("");
+      setRevealError(null);
+    } else {
+      setRevealError("Incorrect password");
+    }
+  };
+
   return (
     <div className="space-y-4">
       <h3 className="text-[0.85rem] font-semibold uppercase tracking-wide text-muted">
         Swarms
       </h3>
+
+      {hideInternals && (
+        <div className="rounded-lg border border-border bg-surface2 px-4 py-3 space-y-2">
+          <div className="flex items-center gap-2 text-[0.85rem] text-muted">
+            <Shield size={15} className="text-accent" />
+            <span>
+              Swarm internals are hidden. Enter your master password to reveal
+              credentials and settings.
+            </span>
+          </div>
+          <div className="flex gap-2">
+            <input
+              type="password"
+              placeholder="Master password"
+              value={revealPassword}
+              onChange={(e) => setRevealPassword(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  handleReveal();
+                }
+              }}
+              className="min-w-0 flex-1 rounded-sm border border-border bg-background px-2.5 py-1.5 text-[0.85rem] text-foreground outline-none focus:border-accent"
+            />
+            <button
+              type="button"
+              disabled={revealLoading}
+              onClick={handleReveal}
+              className="flex items-center gap-1.5 rounded-sm bg-accent px-3 py-1.5 text-[0.82rem] font-semibold text-white transition-colors hover:bg-accent-hover disabled:opacity-50"
+            >
+              <Eye size={13} />
+              {revealLoading ? "Verifying..." : "Reveal"}
+            </button>
+          </div>
+          {revealError && (
+            <p className="text-[0.78rem] text-danger">{revealError}</p>
+          )}
+        </div>
+      )}
+
+      {encrypted && internalsRevealed && (
+        <button
+          type="button"
+          onClick={() => setInternalsRevealed(false)}
+          className="flex items-center gap-1.5 text-[0.82rem] text-muted transition-colors hover:text-foreground"
+        >
+          <EyeOff size={14} />
+          Hide swarm internals
+        </button>
+      )}
 
       {swarms.map((swarm, idx) => (
         <SwarmCard
@@ -63,6 +148,7 @@ export default function SwarmManager() {
           colorIdx={idx}
           isActive={swarm.id === activeSwarmId}
           unlocked={isSwarmUnlocked(swarm.id)}
+          hideInternals={hideInternals}
           onSetActive={() => setActiveSwarm(swarm.id)}
           onRename={(name) => renameSwarm(swarm.id, name)}
           onDelete={() => {
@@ -80,14 +166,16 @@ export default function SwarmManager() {
         />
       ))}
 
-      <button
-        type="button"
-        onClick={() => addSwarm("New Swarm")}
-        className="mx-auto flex items-center gap-2 rounded-sm bg-purple-700 px-5 py-2 text-[0.85rem] font-semibold text-white transition-colors hover:bg-purple-600"
-      >
-        <Plus size={16} />
-        Add Swarm
-      </button>
+      {!hideInternals && (
+        <button
+          type="button"
+          onClick={() => addSwarm("New Swarm")}
+          className="mx-auto flex items-center gap-2 rounded-sm bg-purple-700 px-5 py-2 text-[0.85rem] font-semibold text-white transition-colors hover:bg-purple-600"
+        >
+          <Plus size={16} />
+          Add Swarm
+        </button>
+      )}
 
       <div className="mt-6 space-y-3">
         <h3 className="text-[0.85rem] font-semibold uppercase tracking-wide text-muted">
@@ -156,6 +244,8 @@ export default function SwarmManager() {
             />
           </div>
         </div>
+
+        <EncryptConfigToggle />
       </div>
 
       <div className="mt-6 space-y-3">
@@ -249,6 +339,7 @@ interface SwarmCardProps {
   colorIdx: number;
   isActive: boolean;
   unlocked: boolean;
+  hideInternals: boolean;
   onSetActive: () => void;
   onRename: (name: string) => void;
   onDelete: () => void;
@@ -265,6 +356,7 @@ function SwarmCard({
   colorIdx,
   isActive,
   unlocked,
+  hideInternals,
   onSetActive,
   onRename,
   onDelete,
@@ -302,12 +394,15 @@ function SwarmCard({
         <button
           type="button"
           onClick={onSetActive}
+          disabled={!unlocked}
           className={`h-5 w-5 shrink-0 rounded-full border-2 transition-colors ${
             isActive
               ? "border-accent bg-accent"
-              : "border-muted hover:border-foreground"
+              : !unlocked
+                ? "border-muted opacity-40 cursor-not-allowed"
+                : "border-muted hover:border-foreground"
           }`}
-          title="Set as active swarm"
+          title={unlocked ? "Set as active swarm" : "Unlock swarm to set as active"}
         />
 
         {editing ? (
@@ -356,17 +451,23 @@ function SwarmCard({
           <Lock size={15} className="text-yellow-500" />
         )}
 
-        <button
-          type="button"
-          onClick={onDelete}
-          title="Delete swarm"
-          className="rounded p-1 text-muted transition-colors hover:text-danger"
-        >
-          <Trash2 size={15} />
-        </button>
+        {!hideInternals && (
+          <button
+            type="button"
+            onClick={onDelete}
+            title="Delete swarm"
+            className="rounded p-1 text-muted transition-colors hover:text-danger"
+          >
+            <Trash2 size={15} />
+          </button>
+        )}
       </div>
 
-      {!unlocked && hasLock ? (
+      {hideInternals ? (
+        <p className="text-[0.82rem] text-muted">
+          {swarm.accounts.length} account{swarm.accounts.length !== 1 ? "s" : ""}
+        </p>
+      ) : !unlocked && hasLock ? (
         <div className="space-y-2 py-2">
           <p className="text-[0.82rem] text-muted">
             This swarm is locked.
@@ -645,5 +746,183 @@ function SetPasswordForm({
       </div>
       {error && <p className="text-[0.78rem] text-danger">{error}</p>}
     </form>
+  );
+}
+
+function EncryptConfigToggle() {
+  const [encryptionEnabled, setEncryptionEnabled] = useState(
+    isAppConfigEncrypted,
+  );
+  const [showForm, setShowForm] = useState(false);
+  const [password, setPassword] = useState("");
+  const [passwordConfirm, setPasswordConfirm] = useState("");
+  const [hint, setHint] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const resetForm = () => {
+    setPassword("");
+    setPasswordConfirm("");
+    setHint("");
+    setError(null);
+  };
+
+  const handleEnable = async () => {
+    if (password.length < 4) {
+      setError("Password must be at least 4 characters.");
+      return;
+    }
+    if (password !== passwordConfirm) {
+      setError("Passwords do not match.");
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const config = loadAppConfig();
+      if (!config) {
+        setError("No configuration found.");
+        return;
+      }
+      await enableMasterEncryption(config, password, hint || undefined);
+      setEncryptionEnabled(true);
+      setShowForm(false);
+      resetForm();
+    } catch {
+      setError("Failed to enable encryption.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDisable = async () => {
+    if (!password) {
+      setError("Enter your current master password.");
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const ok = await disableMasterEncryption(password);
+      if (!ok) {
+        setError("Incorrect password.");
+      } else {
+        setEncryptionEnabled(false);
+        setShowForm(false);
+        resetForm();
+      }
+    } catch {
+      setError("Failed to disable encryption.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="rounded-lg bg-surface2 px-4 py-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Shield size={18} className="text-muted" />
+          <div>
+            <span className="text-[0.9rem]">Encrypt stored configuration</span>
+            <p className="text-[0.75rem] text-muted">
+              Protects credentials and preferences with a master password so
+              they cannot be read from browser storage
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={() => {
+            setShowForm((prev) => !prev);
+            resetForm();
+          }}
+          className={`relative h-7 w-[52px] shrink-0 rounded-full transition-colors ${encryptionEnabled ? "bg-accent" : "bg-border"}`}
+          title={
+            encryptionEnabled
+              ? "Disable config encryption"
+              : "Enable config encryption"
+          }
+        >
+          <span
+            className={`absolute top-0.5 left-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-accent text-white transition-transform ${
+              encryptionEnabled ? "translate-x-[24px]" : ""
+            }`}
+          >
+            <Shield size={12} />
+          </span>
+        </button>
+      </div>
+
+      {showForm && (
+        <div className="mt-3 border-t border-border pt-3">
+          {!encryptionEnabled ? (
+            <div className="flex flex-col gap-2">
+              <input
+                type="password"
+                placeholder="Master password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full rounded-sm border border-border bg-background px-3 py-2 text-[0.85rem] text-foreground outline-none focus:border-accent"
+              />
+              <input
+                type="password"
+                placeholder="Confirm password"
+                value={passwordConfirm}
+                onChange={(e) => setPasswordConfirm(e.target.value)}
+                className="w-full rounded-sm border border-border bg-background px-3 py-2 text-[0.85rem] text-foreground outline-none focus:border-accent"
+              />
+              <input
+                type="text"
+                placeholder="Password hint (optional)"
+                value={hint}
+                onChange={(e) => setHint(e.target.value)}
+                className="w-full rounded-sm border border-border bg-background px-3 py-2 text-[0.85rem] text-foreground outline-none focus:border-accent"
+              />
+              <button
+                onClick={handleEnable}
+                disabled={loading}
+                className="rounded-sm bg-accent px-3 py-2 text-[0.85rem] font-semibold text-white transition-colors hover:bg-accent-hover disabled:opacity-50"
+              >
+                {loading ? "Encrypting..." : "Enable encryption"}
+              </button>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              <p className="text-[0.8rem] text-muted">
+                Enter your current master password to disable encryption.
+                Your configuration will be stored in plaintext.
+              </p>
+              <input
+                type="password"
+                placeholder="Current master password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full rounded-sm border border-border bg-background px-3 py-2 text-[0.85rem] text-foreground outline-none focus:border-accent"
+              />
+              <button
+                onClick={handleDisable}
+                disabled={loading}
+                className="rounded-sm bg-danger px-3 py-2 text-[0.85rem] font-semibold text-white transition-colors hover:bg-danger-hover disabled:opacity-50"
+              >
+                {loading ? "Decrypting..." : "Disable encryption"}
+              </button>
+            </div>
+          )}
+          {error && (
+            <p className="mt-2 text-[0.82rem] text-danger">{error}</p>
+          )}
+        </div>
+      )}
+
+      {!encryptionEnabled && !showForm && (
+        <p className="mt-2 text-[0.75rem] text-danger/80">
+          Without encryption, any script running on this page (XSS, malicious
+          extension) can read your account identifiers and server URLs from
+          browser storage, potentially linking your identities. This is
+          especially important when managing multiple identities (work,
+          personal, public).
+        </p>
+      )}
+    </div>
   );
 }

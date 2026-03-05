@@ -15,6 +15,10 @@ import {
   saveAppConfig,
   clearAppConfig,
   generateId,
+  getStorageKind,
+  getEncryptedEnvelope,
+  unlockMasterPassword,
+  initStorageState,
 } from "../lib/session";
 import {
   createSwarmLockVerifier,
@@ -66,6 +70,10 @@ interface SwarmContextValue {
 
   recoveryKeyBytes: Uint8Array<ArrayBuffer> | null;
   setRecoveryKeyBytes: (bytes: Uint8Array<ArrayBuffer> | null) => void;
+
+  configNeedsUnlock: boolean;
+  masterPasswordHint: string | undefined;
+  unlockMasterConfig: (password: string) => Promise<boolean>;
 }
 
 const SwarmContext = createContext<SwarmContextValue | null>(null);
@@ -90,6 +98,10 @@ export function SwarmProvider({ children }: { children: ReactNode }) {
   );
   const [roomListVersion, setRoomListVersion] = useState(0);
   const [hasAnyAccounts, setHasAnyAccounts] = useState(false);
+  const [configNeedsUnlock, setConfigNeedsUnlock] = useState(false);
+  const [masterPasswordHint, setMasterPasswordHint] = useState<
+    string | undefined
+  >(undefined);
 
   const [recoveryKeyBytes, setRecoveryKeyBytesState] =
     useState<Uint8Array<ArrayBuffer> | null>(null);
@@ -208,50 +220,89 @@ export function SwarmProvider({ children }: { children: ReactNode }) {
     [bumpRoomList],
   );
 
+  const initFromConfig = useCallback(
+    (config: AppConfig) => {
+      const { swarms: loadedSwarms, activeSwarmId: loadedActiveId } =
+        config.swarmConfig;
+      setSwarms(loadedSwarms);
+
+      const totalAccounts = loadedSwarms.reduce(
+        (n, s) => n + s.accounts.length,
+        0,
+      );
+      setHasAnyAccounts(totalAccounts > 0);
+
+      const unlocked = new Set<string>();
+      for (const swarm of loadedSwarms) {
+        if (!swarm.lockSalt) {
+          unlocked.add(swarm.id);
+        }
+      }
+      setUnlockedSwarms(unlocked);
+
+      const safeActiveId = unlocked.has(loadedActiveId)
+        ? loadedActiveId
+        : loadedSwarms.find((s) => unlocked.has(s.id))?.id ?? null;
+      setActiveSwarmId(safeActiveId);
+
+      (async () => {
+        for (const swarm of loadedSwarms) {
+          if (!unlocked.has(swarm.id)) continue;
+          for (let i = 0; i < swarm.accounts.length; i++) {
+            const isPrimary = i === 0;
+            try {
+              await initClientForAccount(swarm.accounts[i], isPrimary);
+            } catch (err) {
+              console.error(
+                "Failed to init client for",
+                swarm.accounts[i].userId,
+                err,
+              );
+            }
+          }
+        }
+      })();
+    },
+    [initClientForAccount],
+  );
+
   useEffect(() => {
     if (initedRef.current) return;
     initedRef.current = true;
 
+    initStorageState();
+    const kind = getStorageKind();
+
+    if (kind === "encrypted") {
+      const envelope = getEncryptedEnvelope();
+      setConfigNeedsUnlock(true);
+      setMasterPasswordHint(envelope?.masterPasswordHint);
+      setHasAnyAccounts(
+        (envelope?.swarms?.length ?? 0) > 0,
+      );
+      return;
+    }
+
     const config = loadAppConfig();
     if (!config) return;
 
-    const { swarms: loadedSwarms, activeSwarmId: loadedActiveId } =
-      config.swarmConfig;
-    setSwarms(loadedSwarms);
-    setActiveSwarmId(loadedActiveId);
+    initFromConfig(config);
+  }, [initFromConfig]);
 
-    const totalAccounts = loadedSwarms.reduce(
-      (n, s) => n + s.accounts.length,
-      0,
-    );
-    setHasAnyAccounts(totalAccounts > 0);
+  const unlockMasterConfigCb = useCallback(
+    async (password: string): Promise<boolean> => {
+      const ok = await unlockMasterPassword(password);
+      if (!ok) return false;
 
-    const unlocked = new Set<string>();
-    for (const swarm of loadedSwarms) {
-      if (!swarm.lockSalt) {
-        unlocked.add(swarm.id);
-      }
-    }
-    setUnlockedSwarms(unlocked);
+      const config = loadAppConfig();
+      if (!config) return false;
 
-    (async () => {
-      for (const swarm of loadedSwarms) {
-        if (!unlocked.has(swarm.id)) continue;
-        for (let i = 0; i < swarm.accounts.length; i++) {
-          const isPrimary = i === 0;
-          try {
-            await initClientForAccount(swarm.accounts[i], isPrimary);
-          } catch (err) {
-            console.error(
-              "Failed to init client for",
-              swarm.accounts[i].userId,
-              err,
-            );
-          }
-        }
-      }
-    })();
-  }, [initClientForAccount]);
+      setConfigNeedsUnlock(false);
+      initFromConfig(config);
+      return true;
+    },
+    [initFromConfig],
+  );
 
   const addSwarm = useCallback(
     (name: string): Swarm => {
@@ -311,11 +362,12 @@ export function SwarmProvider({ children }: { children: ReactNode }) {
 
   const setActiveSwarmCb = useCallback(
     (swarmId: string) => {
+      if (!unlockedSwarms.has(swarmId)) return;
       setActiveSwarmId(swarmId);
       persist(swarmsRef.current, swarmId);
       bumpRoomList();
     },
-    [persist, bumpRoomList],
+    [persist, bumpRoomList, unlockedSwarms],
   );
 
   const setSwarmPasswordCb = useCallback(
@@ -433,14 +485,26 @@ export function SwarmProvider({ children }: { children: ReactNode }) {
         });
       }
 
-      setUnlockedSwarms((prev) => {
-        const next = new Set(prev);
-        next.delete(swarmId);
-        return next;
-      });
+      const newUnlocked = new Set(unlockedSwarms);
+      newUnlocked.delete(swarmId);
+      setUnlockedSwarms(newUnlocked);
+
+      const updated = swarmsRef.current.map((s) =>
+        s.id === swarmId ? { ...s, accounts: [] } : s,
+      );
+      setSwarms(updated);
+
+      let newActive = activeSwarmId;
+      if (activeSwarmId === swarmId) {
+        newActive =
+          updated.find((s) => newUnlocked.has(s.id))?.id ?? null;
+        setActiveSwarmId(newActive);
+      }
+
+      persist(updated, newActive);
       bumpRoomList();
     },
-    [bumpRoomList],
+    [bumpRoomList, activeSwarmId, unlockedSwarms, persist],
   );
 
   const isSwarmUnlocked = useCallback(
@@ -606,6 +670,9 @@ export function SwarmProvider({ children }: { children: ReactNode }) {
         bumpRoomList,
         recoveryKeyBytes,
         setRecoveryKeyBytes,
+        configNeedsUnlock,
+        masterPasswordHint,
+        unlockMasterConfig: unlockMasterConfigCb,
       }}
     >
       {children}
