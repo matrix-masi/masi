@@ -19,6 +19,7 @@ import {
   getEncryptedEnvelope,
   unlockMasterPassword,
   initStorageState,
+  isAppConfigEncrypted,
 } from "../lib/session";
 import {
   createSwarmLockVerifier,
@@ -70,6 +71,11 @@ interface SwarmContextValue {
 
   recoveryKeyBytes: Uint8Array<ArrayBuffer> | null;
   setRecoveryKeyBytes: (bytes: Uint8Array<ArrayBuffer> | null) => void;
+  addRecoveryKeyForSwarm: (
+    swarmId: string,
+    keyBytes: Uint8Array<ArrayBuffer>,
+  ) => void;
+  getRecoveryKeysForSwarm: (swarmId: string) => Uint8Array<ArrayBuffer>[];
 
   configNeedsUnlock: boolean;
   masterPasswordHint: string | undefined;
@@ -114,6 +120,82 @@ export function SwarmProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const swarmRecoveryKeysRef = useRef<Map<string, Uint8Array<ArrayBuffer>[]>>(
+    new Map(),
+  );
+
+  const base64ToBytes = useCallback(
+    (b64: string): Uint8Array<ArrayBuffer> => {
+      const binary = atob(b64);
+      const bytes = new Uint8Array(binary.length) as Uint8Array<ArrayBuffer>;
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      return bytes;
+    },
+    [],
+  );
+
+  const bytesToBase64 = useCallback(
+    (bytes: Uint8Array<ArrayBuffer>): string => {
+      let binary = "";
+      for (let i = 0; i < bytes.length; i++)
+        binary += String.fromCharCode(bytes[i]);
+      return btoa(binary);
+    },
+    [],
+  );
+
+  const restoreSwarmRecoveryKeys = useCallback(
+    (swarmId: string, keysBase64: string[] | undefined) => {
+      if (!keysBase64 || keysBase64.length === 0) return;
+      const decoded = keysBase64.map(base64ToBytes);
+      swarmRecoveryKeysRef.current.set(swarmId, decoded);
+      if (decoded.length > 0) {
+        recoveryKeyBytesRef.current = decoded[0];
+        setRecoveryKeyBytesState(decoded[0]);
+      }
+    },
+    [base64ToBytes],
+  );
+
+  const addRecoveryKeyForSwarm = useCallback(
+    (swarmId: string, keyBytes: Uint8Array<ArrayBuffer>) => {
+      const existing = swarmRecoveryKeysRef.current.get(swarmId) ?? [];
+      const b64 = bytesToBase64(keyBytes);
+      const alreadyExists = existing.some(
+        (k) => bytesToBase64(k) === b64,
+      );
+      if (alreadyExists) return;
+
+      const updated = [...existing, keyBytes];
+      swarmRecoveryKeysRef.current.set(swarmId, updated);
+
+      const updatedSwarms = swarmsRef.current.map((s) =>
+        s.id === swarmId
+          ? { ...s, recoveryKeysBase64: updated.map(bytesToBase64) }
+          : s,
+      );
+      setSwarms(updatedSwarms);
+      const cfg = loadAppConfig();
+      const config: AppConfig = {
+        swarmConfig: {
+          swarms: updatedSwarms,
+          activeSwarmId:
+            cfg?.swarmConfig.activeSwarmId ?? updatedSwarms[0]?.id ?? "",
+        },
+        preferences: cfg?.preferences ?? { ...DEFAULT_PREFERENCES },
+      };
+      saveAppConfig(config);
+    },
+    [bytesToBase64],
+  );
+
+  const getRecoveryKeysForSwarm = useCallback(
+    (swarmId: string): Uint8Array<ArrayBuffer>[] => {
+      return swarmRecoveryKeysRef.current.get(swarmId) ?? [];
+    },
+    [],
+  );
+
   const clientsRef = useRef(clients);
   clientsRef.current = clients;
   const swarmsRef = useRef(swarms);
@@ -143,9 +225,10 @@ export function SwarmProvider({ children }: { children: ReactNode }) {
   );
 
   const initClientForAccount = useCallback(
-    async (account: SwarmAccount, isPrimary: boolean) => {
+    async (account: SwarmAccount, isPrimary: boolean, swarmId?: string) => {
       if (clientsRef.current.has(account.id)) return;
 
+      const ownerSwarmId = swarmId;
       const c = sdk.createClient({
         baseUrl: account.baseUrl,
         userId: account.userId,
@@ -154,7 +237,13 @@ export function SwarmProvider({ children }: { children: ReactNode }) {
         timelineSupport: true,
         cryptoCallbacks: {
           getSecretStorageKey: async ({ keys }) => {
-            const rkb = recoveryKeyBytesRef.current;
+            const swarmKeys = ownerSwarmId
+              ? swarmRecoveryKeysRef.current.get(ownerSwarmId)
+              : null;
+            const rkb =
+              swarmKeys && swarmKeys.length > 0
+                ? swarmKeys[0]
+                : recoveryKeyBytesRef.current;
             if (rkb) {
               const keyId = Object.keys(keys)[0];
               return [keyId, rkb] as [string, Uint8Array<ArrayBuffer>];
@@ -167,6 +256,9 @@ export function SwarmProvider({ children }: { children: ReactNode }) {
             key: Uint8Array<ArrayBuffer>,
           ) => {
             setRecoveryKeyBytes(key);
+            if (ownerSwarmId) {
+              addRecoveryKeyForSwarm(ownerSwarmId, key);
+            }
           },
         },
       });
@@ -217,7 +309,7 @@ export function SwarmProvider({ children }: { children: ReactNode }) {
         schedulerRef.current.addSecondaryClient(account.id, c);
       }
     },
-    [bumpRoomList],
+    [bumpRoomList, addRecoveryKeyForSwarm],
   );
 
   const initFromConfig = useCallback(
@@ -245,17 +337,21 @@ export function SwarmProvider({ children }: { children: ReactNode }) {
         : loadedSwarms.find((s) => unlocked.has(s.id))?.id ?? null;
       setActiveSwarmId(safeActiveId);
 
+      for (const sw of loadedSwarms) {
+        restoreSwarmRecoveryKeys(sw.id, sw.recoveryKeysBase64);
+      }
+
       (async () => {
-        for (const swarm of loadedSwarms) {
-          if (!unlocked.has(swarm.id)) continue;
-          for (let i = 0; i < swarm.accounts.length; i++) {
+        for (const sw of loadedSwarms) {
+          if (!unlocked.has(sw.id)) continue;
+          for (let i = 0; i < sw.accounts.length; i++) {
             const isPrimary = i === 0;
             try {
-              await initClientForAccount(swarm.accounts[i], isPrimary);
+              await initClientForAccount(sw.accounts[i], isPrimary, sw.id);
             } catch (err) {
               console.error(
                 "Failed to init client for",
-                swarm.accounts[i].userId,
+                sw.accounts[i].userId,
                 err,
               );
             }
@@ -263,7 +359,7 @@ export function SwarmProvider({ children }: { children: ReactNode }) {
         }
       })();
     },
-    [initClientForAccount],
+    [initClientForAccount, restoreSwarmRecoveryKeys],
   );
 
   useEffect(() => {
@@ -377,7 +473,13 @@ export function SwarmProvider({ children }: { children: ReactNode }) {
       const swarm = swarmsRef.current.find((s) => s.id === swarmId);
       if (!swarm) return;
 
-      const credsJson = JSON.stringify(swarm.accounts);
+      const accountsWithoutPasswords = swarm.accounts.map(
+        ({ password: _, ...rest }) => rest,
+      );
+      const credsJson = JSON.stringify({
+        accounts: accountsWithoutPasswords,
+        recoveryKeysBase64: swarm.recoveryKeysBase64,
+      });
       const encrypted = await encryptSwarmCredentials(credsJson, password);
 
       const updated = swarmsRef.current.map((s) =>
@@ -437,16 +539,28 @@ export function SwarmProvider({ children }: { children: ReactNode }) {
             swarm.encryptedCredentials.ciphertext,
             password,
           );
-          const accounts = JSON.parse(json) as SwarmAccount[];
+          const parsed = JSON.parse(json);
+          let accounts: SwarmAccount[];
+          let recoveryKeysBase64: string[] | undefined;
+          if (Array.isArray(parsed)) {
+            accounts = parsed as SwarmAccount[];
+          } else {
+            accounts = parsed.accounts as SwarmAccount[];
+            recoveryKeysBase64 = parsed.recoveryKeysBase64;
+          }
           const updated = swarmsRef.current.map((s) =>
-            s.id === swarmId ? { ...s, accounts } : s,
+            s.id === swarmId
+              ? { ...s, accounts, recoveryKeysBase64 }
+              : s,
           );
           setSwarms(updated);
           persist(updated, activeSwarmId);
 
+          restoreSwarmRecoveryKeys(swarmId, recoveryKeysBase64);
+
           for (let i = 0; i < accounts.length; i++) {
             try {
-              await initClientForAccount(accounts[i], i === 0);
+              await initClientForAccount(accounts[i], i === 0, swarmId);
             } catch (err) {
               console.error("Failed to init unlocked account", err);
             }
@@ -461,7 +575,13 @@ export function SwarmProvider({ children }: { children: ReactNode }) {
       bumpRoomList();
       return true;
     },
-    [activeSwarmId, persist, initClientForAccount, bumpRoomList],
+    [
+      activeSwarmId,
+      persist,
+      initClientForAccount,
+      bumpRoomList,
+      restoreSwarmRecoveryKeys,
+    ],
   );
 
   const lockSwarmCb = useCallback(
@@ -528,12 +648,18 @@ export function SwarmProvider({ children }: { children: ReactNode }) {
       });
       tempClient.stopClient();
 
+      const cfg = loadAppConfig();
+      const shouldStorePassword =
+        isAppConfigEncrypted() &&
+        cfg?.preferences.storeAccountPasswords === true;
+
       const account: SwarmAccount = {
         id: generateId(),
         baseUrl: trimmed,
         userId: resp.user_id,
         accessToken: resp.access_token,
         deviceId: resp.device_id,
+        ...(shouldStorePassword ? { password } : {}),
       };
 
       const swarm = swarmsRef.current.find((s) => s.id === swarmId);
@@ -548,7 +674,7 @@ export function SwarmProvider({ children }: { children: ReactNode }) {
       setHasAnyAccounts(true);
       persist(updated, activeSwarmId);
 
-      await initClientForAccount(account, isPrimary);
+      await initClientForAccount(account, isPrimary, swarmId);
       bumpRoomList();
     },
     [activeSwarmId, persist, initClientForAccount, bumpRoomList],
@@ -670,6 +796,8 @@ export function SwarmProvider({ children }: { children: ReactNode }) {
         bumpRoomList,
         recoveryKeyBytes,
         setRecoveryKeyBytes,
+        addRecoveryKeyForSwarm,
+        getRecoveryKeysForSwarm,
         configNeedsUnlock,
         masterPasswordHint,
         unlockMasterConfig: unlockMasterConfigCb,

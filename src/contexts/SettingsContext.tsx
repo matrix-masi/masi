@@ -29,6 +29,9 @@ interface SettingsContextValue {
   setSwarmSecondarySyncIntervalMinutes: (m: number) => void;
   swarmMissedEventsThreshold: number;
   setSwarmMissedEventsThreshold: (n: number) => void;
+
+  storeAccountPasswords: boolean;
+  setStoreAccountPasswords: (v: boolean) => void;
 }
 
 const SettingsContext = createContext<SettingsContextValue | null>(null);
@@ -95,6 +98,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     useState(() => loadPref("swarmSecondarySyncIntervalMinutes"));
   const [swarmMissedEventsThreshold, _setSwarmMissedEventsThreshold] =
     useState(() => loadPref("swarmMissedEventsThreshold"));
+  const [storeAccountPasswords, _setStoreAccountPasswords] = useState(() =>
+    loadPref("storeAccountPasswords"),
+  );
 
   const toggleHideMedia = useCallback(() => {
     setHideMedia((prev) => {
@@ -158,6 +164,11 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     savePref("swarmMissedEventsThreshold", clamped);
   }, []);
 
+  const setStoreAccountPasswords = useCallback((v: boolean) => {
+    _setStoreAccountPasswords(v);
+    savePref("storeAccountPasswords", v);
+  }, []);
+
   return (
     <SettingsContext.Provider
       value={{
@@ -179,6 +190,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         setSwarmSecondarySyncIntervalMinutes,
         swarmMissedEventsThreshold,
         setSwarmMissedEventsThreshold,
+        storeAccountPasswords,
+        setStoreAccountPasswords,
       }}
     >
       {children}

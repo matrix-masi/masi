@@ -11,12 +11,14 @@ export interface SwarmAccount {
   userId: string;
   accessToken: string;
   deviceId: string;
+  password?: string;
 }
 
 export interface Swarm {
   id: string;
   name: string;
   accounts: SwarmAccount[];
+  recoveryKeysBase64?: string[];
   passwordHint?: string;
   lockSalt?: string;
   lockVerifier?: string;
@@ -43,6 +45,7 @@ export interface AppPreferences {
   swarmFailoverTimeout: number;
   swarmSecondarySyncIntervalMinutes: number;
   swarmMissedEventsThreshold: number;
+  storeAccountPasswords: boolean;
 }
 
 export interface AppConfig {
@@ -92,4 +95,5 @@ export const DEFAULT_PREFERENCES: AppPreferences = {
   swarmFailoverTimeout: 5,
   swarmSecondarySyncIntervalMinutes: 2,
   swarmMissedEventsThreshold: 3,
+  storeAccountPasswords: false,
 };

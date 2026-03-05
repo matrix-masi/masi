@@ -187,6 +187,10 @@ export function MatrixProvider({ children }: { children: ReactNode }) {
 
       swarm.setRecoveryKeyBytes(decoded);
 
+      if (swarm.activeSwarmId) {
+        swarm.addRecoveryKeyForSwarm(swarm.activeSwarmId, decoded);
+      }
+
       if (recoveryResolveRef.current) {
         recoveryResolveRef.current(decoded);
         recoveryResolveRef.current = null;

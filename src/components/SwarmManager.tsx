@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { Trash2, Plus, Lock, Unlock, Download, Key, Shield, Eye, EyeOff } from "lucide-react";
+import { Trash2, Plus, Lock, Unlock, Download, Key, Shield, Eye, EyeOff, KeyRound } from "lucide-react";
 import { useSwarm } from "../contexts/SwarmContext";
 import { useSettings } from "../contexts/SettingsContext";
 import { exportAppConfig, exportSwarmConfig } from "../lib/swarmCrypto";
@@ -246,6 +246,7 @@ export default function SwarmManager() {
         </div>
 
         <EncryptConfigToggle />
+        <StorePasswordsToggle />
       </div>
 
       <div className="mt-6 space-y-3">
@@ -923,6 +924,53 @@ function EncryptConfigToggle() {
           personal, public).
         </p>
       )}
+    </div>
+  );
+}
+
+function StorePasswordsToggle() {
+  const encrypted = isAppConfigEncrypted();
+  const { storeAccountPasswords, setStoreAccountPasswords } = useSettings();
+
+  return (
+    <div className="rounded-lg bg-surface2 px-4 py-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <KeyRound size={18} className="text-muted" />
+          <div>
+            <span className="text-[0.9rem]">Store account passwords</span>
+            <p className="text-[0.75rem] text-muted">
+              {encrypted
+                ? "Saves account passwords inside the master-encrypted config for automatic re-login if tokens expire"
+                : "Enable master encryption above to allow storing account passwords"}
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={() => {
+            if (encrypted) setStoreAccountPasswords(!storeAccountPasswords);
+          }}
+          disabled={!encrypted}
+          className={`relative h-7 w-[52px] shrink-0 rounded-full transition-colors ${
+            encrypted && storeAccountPasswords ? "bg-accent" : "bg-border"
+          } ${!encrypted ? "cursor-not-allowed opacity-50" : ""}`}
+          title={
+            !encrypted
+              ? "Enable master encryption first"
+              : storeAccountPasswords
+                ? "Disable password storage"
+                : "Enable password storage"
+          }
+        >
+          <span
+            className={`absolute top-0.5 left-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-accent text-white transition-transform ${
+              encrypted && storeAccountPasswords ? "translate-x-[24px]" : ""
+            }`}
+          >
+            <KeyRound size={12} />
+          </span>
+        </button>
+      </div>
     </div>
   );
 }

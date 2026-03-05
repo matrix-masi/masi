@@ -134,22 +134,34 @@ function buildEnvelope(
   };
 }
 
+function stripAccountPasswords(
+  accounts: SwarmAccount[],
+): SwarmAccount[] {
+  return accounts.map(({ password: _, ...rest }) => rest);
+}
+
 function toStorageSafeSwarms(
   swarms: AppConfig["swarmConfig"]["swarms"],
+  opts: { keepPasswords?: boolean } = {},
 ): AppConfig["swarmConfig"]["swarms"] {
-  return swarms.map((s) =>
-    s.encryptedCredentials
-      ? {
-          id: s.id,
-          name: s.name,
-          accounts: [],
-          passwordHint: s.passwordHint,
-          lockSalt: s.lockSalt,
-          lockVerifier: s.lockVerifier,
-          encryptedCredentials: s.encryptedCredentials,
-        }
-      : s,
-  );
+  return swarms.map((s) => {
+    if (s.encryptedCredentials) {
+      return {
+        id: s.id,
+        name: s.name,
+        accounts: [],
+        recoveryKeysBase64: s.recoveryKeysBase64,
+        passwordHint: s.passwordHint,
+        lockSalt: s.lockSalt,
+        lockVerifier: s.lockVerifier,
+        encryptedCredentials: s.encryptedCredentials,
+      };
+    }
+    const accounts = opts.keepPasswords
+      ? s.accounts
+      : stripAccountPasswords(s.accounts);
+    return { ...s, accounts };
+  });
 }
 
 export type StorageKind = "none" | "plaintext" | "encrypted";
@@ -199,7 +211,10 @@ async function encryptAndSave(
   password: string,
 ): Promise<void> {
   const existingEnvelope = getEncryptedEnvelope();
-  const safeSwarms = toStorageSafeSwarms(config.swarmConfig.swarms);
+  const keepPasswords = config.preferences.storeAccountPasswords === true;
+  const safeSwarms = toStorageSafeSwarms(config.swarmConfig.swarms, {
+    keepPasswords,
+  });
   const payload = await encryptAppConfigPayload(
     JSON.stringify({
       preferences: config.preferences,
@@ -276,7 +291,10 @@ export async function enableMasterEncryption(
   const { masterLockSalt, masterLockVerifier } =
     await createMasterLockVerifier(password);
 
-  const safeSwarms = toStorageSafeSwarms(config.swarmConfig.swarms);
+  const keepPasswords = config.preferences.storeAccountPasswords === true;
+  const safeSwarms = toStorageSafeSwarms(config.swarmConfig.swarms, {
+    keepPasswords,
+  });
   const payload = await encryptAppConfigPayload(
     JSON.stringify({
       preferences: config.preferences,
@@ -336,6 +354,10 @@ export async function disableMasterEncryption(
 
   sessionPassword = null;
   storageEncrypted = false;
+  config.preferences = {
+    ...config.preferences,
+    storeAccountPasswords: false,
+  };
   decryptedConfig = config;
   const safe: AppConfig = {
     ...config,
