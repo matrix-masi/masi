@@ -8,9 +8,10 @@ import {
 } from "react";
 import * as sdk from "matrix-js-sdk";
 import { decodeRecoveryKey } from "matrix-js-sdk/lib/crypto-api/recovery-key";
-import type { SessionData } from "../lib/types";
-import { saveSession, loadSession, clearSession } from "../lib/session";
+import type { Swarm } from "../lib/types";
 import { clearBlobCache } from "../lib/media";
+import { clearAppConfig, generateId } from "../lib/session";
+import { useSwarm } from "./SwarmContext";
 
 interface LightboxTarget {
   type: "image" | "video";
@@ -24,10 +25,15 @@ interface MatrixContextValue {
   cryptoAvailable: boolean;
   syncState: string | null;
   roomListVersion: number;
-  session: SessionData | null;
   login: (baseUrl: string, user: string, password: string) => Promise<void>;
   logout: () => void;
-  initFromSession: (session: SessionData) => void;
+
+  activeSwarm: Swarm | null;
+  allSwarmClients: sdk.MatrixClient[];
+  isActiveSwarmUnlocked: boolean;
+  sendingSwarmId: string | null;
+  setSendingSwarmId: (id: string | null) => void;
+  sessionVisitedRoomIds: Set<string>;
 
   lightboxTarget: LightboxTarget | null;
   openLightbox: (type: "image" | "video", content: Record<string, unknown>) => void;
@@ -61,12 +67,9 @@ export function useMatrix(): MatrixContextValue {
 }
 
 export function MatrixProvider({ children }: { children: ReactNode }) {
-  const [client, setClient] = useState<sdk.MatrixClient | null>(null);
-  const [currentRoomId, setCurrentRoomId] = useState<string | null>(null);
-  const [cryptoAvailable, setCryptoAvailable] = useState(false);
-  const [syncState, setSyncState] = useState<string | null>(null);
-  const [session, setSession] = useState<SessionData | null>(loadSession);
-  const [roomListVersion, setRoomListVersion] = useState(0);
+  const swarm = useSwarm();
+
+  const [currentRoomId, setCurrentRoomIdRaw] = useState<string | null>(null);
   const [lightboxTarget, setLightboxTarget] = useState<LightboxTarget | null>(null);
   const [showRecoveryModal, setShowRecoveryModal] = useState(false);
   const [recoveryError, setRecoveryError] = useState<string | null>(null);
@@ -74,163 +77,88 @@ export function MatrixProvider({ children }: { children: ReactNode }) {
   const [showCryptoBanner, setShowCryptoBanner] = useState(false);
   const [targetEventId, setTargetEventId] = useState<string | null>(null);
   const [playlistTarget, setPlaylistTarget] = useState<{ roomId: string } | null>(null);
+  const [sendingSwarmId, setSendingSwarmId] = useState<string | null>(null);
 
-  const recoveryKeyBytesRef = useRef<Uint8Array<ArrayBuffer> | null>(null);
+  const sessionVisitedRoomIdsRef = useRef<Set<string>>(new Set());
+  const [sessionVisitedRoomIds] = useState(() => sessionVisitedRoomIdsRef.current);
+
   const recoveryResolveRef = useRef<
     ((decoded: Uint8Array<ArrayBuffer> | null) => void) | null
   >(null);
-  const clientRef = useRef<sdk.MatrixClient | null>(null);
-  const inflightInitRef = useRef<Promise<void> | null>(null);
 
-  const bumpRoomList = useCallback(() => {
-    setRoomListVersion((v) => v + 1);
-  }, []);
+  const client = swarm.getPrimaryClient();
+  const allSwarmClients = swarm.getAllSwarmClients();
 
-  const initClient = useCallback(
-    async (sess: SessionData) => {
-      if (inflightInitRef.current) {
-        return inflightInitRef.current;
-      }
-      const run = async () => {
-        const c = sdk.createClient({
-          baseUrl: sess.baseUrl,
-          userId: sess.userId,
-          accessToken: sess.accessToken,
-          deviceId: sess.deviceId,
-          timelineSupport: true,
-          cryptoCallbacks: {
-            getSecretStorageKey: async ({ keys }, _name) => {
-              if (recoveryKeyBytesRef.current) {
-                const keyId = Object.keys(keys)[0];
-                return [keyId, recoveryKeyBytesRef.current];
-              }
-              return new Promise<[string, Uint8Array<ArrayBuffer>] | null>((resolve) => {
-                recoveryResolveRef.current = (decoded) => {
-                  if (decoded) {
-                    const keyId = Object.keys(keys)[0];
-                    resolve([keyId, decoded]);
-                  } else {
-                    resolve(null);
-                  }
-                };
-                setShowRecoveryModal(true);
-                setRecoveryError(null);
-              });
-            },
-            cacheSecretStorageKey: (
-              _keyId: string,
-              _keyInfo: unknown,
-              key: Uint8Array<ArrayBuffer>
-            ) => {
-              recoveryKeyBytesRef.current = key;
-            },
-          },
-        });
+  const activeSwarm =
+    swarm.swarms.find((s) => s.id === swarm.activeSwarmId) ?? null;
+  const isActiveSwarmUnlocked = activeSwarm
+    ? swarm.isSwarmUnlocked(activeSwarm.id)
+    : false;
 
-        clientRef.current = c;
-        setClient(c);
+  const syncState = (() => {
+    if (!client) return null;
+    if (!activeSwarm) return null;
+    const firstAcc = activeSwarm.accounts[0];
+    if (!firstAcc) return null;
+    const health = swarm.clientHealth.get(firstAcc.id);
+    if (health === "healthy") return "SYNCING";
+    if (health === "error") return "ERROR";
+    return "SYNCING";
+  })();
 
-        try {
-          await c.initRustCrypto();
-          setCryptoAvailable(true);
-        } catch (err) {
-          console.warn(
-            "Crypto init failed, encrypted messages won't be decryptable:",
-            err
-          );
-        }
-
-        c.on(sdk.ClientEvent.Sync, (state: string) => {
-          setSyncState(state);
-          if (state === "PREPARED" || state === "SYNCING") {
-            bumpRoomList();
-          }
-        });
-
-        c.on(sdk.RoomEvent.Timeline, () => bumpRoomList());
-        c.on(sdk.RoomEvent.Name, () => bumpRoomList());
-        c.on(sdk.RoomEvent.Receipt, () => bumpRoomList());
-        c.on(sdk.RoomEvent.MyMembership, () => bumpRoomList());
-
-        await c.startClient({ initialSyncLimit: 30 });
-      };
-      const p = run();
-      inflightInitRef.current = p;
-      p.finally(() => {
-        inflightInitRef.current = null;
-      });
-      return p;
+  const setCurrentRoomId = useCallback(
+    (id: string | null) => {
+      setCurrentRoomIdRaw(id);
+      if (id) sessionVisitedRoomIdsRef.current.add(id);
     },
-    [bumpRoomList]
+    [],
   );
 
   const login = useCallback(
     async (baseUrl: string, user: string, password: string) => {
-      const trimmed = baseUrl.replace(/\/+$/, "");
-      const tempClient = sdk.createClient({ baseUrl: trimmed });
-      const resp = await tempClient.login("m.login.password", {
-        user,
-        password,
-        initial_device_display_name: "Matrix Mini Client",
-      });
-      const sess: SessionData = {
-        baseUrl: trimmed,
-        userId: resp.user_id,
-        accessToken: resp.access_token,
-        deviceId: resp.device_id,
-      };
-      saveSession(sess);
-      setSession(sess);
-      tempClient.stopClient();
-      await initClient(sess);
+      let targetSwarmId = swarm.activeSwarmId;
+      if (!targetSwarmId || swarm.swarms.length === 0) {
+        const newSwarm = swarm.addSwarm("My Swarm");
+        targetSwarmId = newSwarm.id;
+      }
+      await swarm.addAccount(targetSwarmId!, baseUrl, user, password);
     },
-    [initClient]
+    [swarm],
   );
 
   const logout = useCallback(() => {
-    if (!confirm("Sign out?")) return;
+    if (!confirm("Sign out of all accounts?")) return;
     clearBlobCache();
-    if (clientRef.current) {
-      clientRef.current.stopClient();
-      clientRef.current.logout(true).catch(() => {});
+    for (const [, c] of swarm.clients) {
+      try {
+        c.stopClient();
+        c.logout(true).catch(() => {});
+      } catch {}
     }
-    clearSession();
+    clearAppConfig();
     location.reload();
-  }, []);
-
-  const initFromSession = useCallback(
-    (sess: SessionData) => {
-      initClient(sess);
-    },
-    [initClient]
-  );
+  }, [swarm]);
 
   const navigateToEvent = useCallback(
     (roomId: string, eventId: string) => {
       setTargetEventId(eventId);
       setCurrentRoomId(roomId);
     },
-    []
+    [setCurrentRoomId],
   );
 
   const openLightbox = useCallback(
     (type: "image" | "video", content: Record<string, unknown>) => {
       setLightboxTarget({ type, content });
     },
-    []
+    [],
   );
-
-  const closeLightbox = useCallback(() => {
-    setLightboxTarget(null);
-  }, []);
+  const closeLightbox = useCallback(() => setLightboxTarget(null), []);
 
   const openPlaylist = useCallback((roomId: string) => {
     setPlaylistTarget({ roomId });
   }, []);
-
-  const closePlaylist = useCallback(() => {
-    setPlaylistTarget(null);
-  }, []);
+  const closePlaylist = useCallback(() => setPlaylistTarget(null), []);
 
   const openRecoveryModal = useCallback(() => {
     setShowRecoveryModal(true);
@@ -257,7 +185,11 @@ export function MatrixProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      recoveryKeyBytesRef.current = decoded;
+      swarm.setRecoveryKeyBytes(decoded);
+
+      if (swarm.activeSwarmId) {
+        swarm.addRecoveryKeyForSwarm(swarm.activeSwarmId, decoded);
+      }
 
       if (recoveryResolveRef.current) {
         recoveryResolveRef.current(decoded);
@@ -267,45 +199,38 @@ export function MatrixProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      const c = clientRef.current;
-      if (!c) {
-        setRecoveryError("Client is not initialized");
-        return;
-      }
-
-      let cryptoModule = c.getCrypto();
-      if (!cryptoModule) {
-        try {
-          await c.initRustCrypto();
-          setCryptoAvailable(true);
-          cryptoModule = c.getCrypto();
-        } catch (initErr) {
-          console.error("Crypto initialization failed:", initErr);
-        }
-        if (!cryptoModule) {
-          setRecoveryError("Encryption could not be initialized");
-          return;
-        }
-      }
-
       setRecoveryLoading(true);
       setRecoveryError(null);
 
-      try {
-        await cryptoModule.loadSessionBackupPrivateKeyFromSecretStorage();
-        await cryptoModule.checkKeyBackupAndEnable();
-        setShowRecoveryModal(false);
-        setShowCryptoBanner(false);
-      } catch (err: unknown) {
-        recoveryKeyBytesRef.current = null;
-        setRecoveryError(
-          err instanceof Error ? err.message : "Failed to restore keys"
-        );
-      } finally {
-        setRecoveryLoading(false);
+      const targets = allSwarmClients.length > 0 ? allSwarmClients : client ? [client] : [];
+      for (const c of targets) {
+        try {
+          let cryptoModule = c.getCrypto();
+          if (!cryptoModule) {
+            const userId = c.getUserId();
+            const deviceId = c.getDeviceId();
+            await c.initRustCrypto({
+              cryptoDatabasePrefix:
+                userId && deviceId
+                  ? `matrix-js-sdk-${userId}-${deviceId}`
+                  : undefined,
+            });
+            cryptoModule = c.getCrypto();
+          }
+          if (cryptoModule) {
+            await cryptoModule.loadSessionBackupPrivateKeyFromSecretStorage();
+            await cryptoModule.checkKeyBackupAndEnable();
+          }
+        } catch (err) {
+          console.warn("Recovery key setup failed for client:", err);
+        }
       }
+
+      setShowRecoveryModal(false);
+      setShowCryptoBanner(false);
+      setRecoveryLoading(false);
     },
-    []
+    [swarm, allSwarmClients, client],
   );
 
   return (
@@ -314,13 +239,17 @@ export function MatrixProvider({ children }: { children: ReactNode }) {
         client,
         currentRoomId,
         setCurrentRoomId,
-        cryptoAvailable,
+        cryptoAvailable: true,
         syncState,
-        roomListVersion,
-        session,
+        roomListVersion: swarm.roomListVersion,
         login,
         logout,
-        initFromSession,
+        activeSwarm,
+        allSwarmClients,
+        isActiveSwarmUnlocked,
+        sendingSwarmId,
+        setSendingSwarmId,
+        sessionVisitedRoomIds,
         lightboxTarget,
         openLightbox,
         closeLightbox,

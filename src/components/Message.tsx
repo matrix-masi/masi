@@ -600,7 +600,7 @@ function ImageContent({
   content,
   openLightbox,
 }: MediaContentProps) {
-  const { client } = useMatrix();
+  const { client, allSwarmClients } = useMatrix();
   const { hideMedia } = useSettings();
   const [src, setSrc] = useState<string | null>(null);
   const [revealed, setRevealed] = useState(!hideMedia);
@@ -615,12 +615,13 @@ function ImageContent({
     if (!mediaUrl) return;
     const info = content.info as Record<string, unknown> | undefined;
     const hasThumbnail = !!(info?.thumbnail_url || info?.thumbnail_file);
-    fetchMedia(content as never, client, { thumbnail: hasThumbnail }).then(
-      (url) => {
-        if (url) setSrc(url);
-      }
-    );
-  }, [client, content]);
+    fetchMedia(content as never, client, {
+      thumbnail: hasThumbnail,
+      fallbackClients: allSwarmClients,
+    }).then((url) => {
+      if (url) setSrc(url);
+    });
+  }, [client, content, allSwarmClients]);
 
   if (!src)
     return (
@@ -666,7 +667,7 @@ function VideoContent({
   content,
   openLightbox,
 }: MediaContentProps) {
-  const { client } = useMatrix();
+  const { client, allSwarmClients } = useMatrix();
   const { hideMedia } = useSettings();
   const [src, setSrc] = useState<string | null>(null);
   const [poster, setPoster] = useState<string | null>(null);
@@ -680,17 +681,17 @@ function VideoContent({
     if (!client) return;
     const mediaUrl = content.url || (content.file as Record<string, unknown>)?.url;
     if (!mediaUrl) return;
-    fetchMedia(content as never, client).then((url) => {
+    fetchMedia(content as never, client, { fallbackClients: allSwarmClients }).then((url) => {
       if (url) setSrc(url);
     });
     const info = content.info as Record<string, unknown> | undefined;
     const hasThumbnail = !!(info?.thumbnail_url || info?.thumbnail_file);
     if (hasThumbnail) {
-      fetchMedia(content as never, client, { thumbnail: true }).then((url) => {
+      fetchMedia(content as never, client, { thumbnail: true, fallbackClients: allSwarmClients }).then((url) => {
         if (url) setPoster(url);
       });
     }
-  }, [client, content]);
+  }, [client, content, allSwarmClients]);
 
   if (!src)
     return (

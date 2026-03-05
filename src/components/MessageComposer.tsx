@@ -1,39 +1,99 @@
 import { useState, useRef, useCallback, type FormEvent, type ChangeEvent, type KeyboardEvent } from "react";
-import { EventType, MsgType } from "matrix-js-sdk";
+import { EventType, MsgType, type MatrixClient } from "matrix-js-sdk";
 import { useMatrix } from "../contexts/MatrixContext";
 import { useSettings } from "../contexts/SettingsContext";
+import { useClientsForRoom } from "../hooks/useRoomList";
 import { getImageDimensions, getVideoDimensions } from "../lib/helpers";
 import { markdownToMatrixHtml } from "../lib/markdown";
 
+function sendWithTimeout(
+  client: MatrixClient,
+  roomId: string,
+  eventType: EventType,
+  content: Record<string, unknown>,
+  timeoutMs: number,
+): Promise<{ success: boolean }> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve({ success: false }), timeoutMs);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (client.sendEvent as any)(roomId, eventType, content)
+      .then(() => {
+        clearTimeout(timer);
+        resolve({ success: true });
+      })
+      .catch(() => {
+        clearTimeout(timer);
+        resolve({ success: false });
+      });
+  });
+}
+
 export default function MessageComposer() {
-  const { client, currentRoomId } = useMatrix();
-  const { sendMarkdown } = useSettings();
+  const { client, currentRoomId, allSwarmClients } = useMatrix();
+  const { sendMarkdown, swarmFailoverTimeout } = useSettings();
+  const roomClients = useClientsForRoom(currentRoomId);
   const [message, setMessage] = useState("");
   const [uploadToast, setUploadToast] = useState<string | null>(null);
+  const [sendError, setSendError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const getOrderedClients = useCallback((): MatrixClient[] => {
+    if (roomClients.length > 0) return roomClients;
+    if (allSwarmClients.length > 0) return allSwarmClients;
+    return client ? [client] : [];
+  }, [roomClients, allSwarmClients, client]);
+
+  const sendWithFailover = useCallback(
+    async (
+      roomId: string,
+      eventType: EventType,
+      content: Record<string, unknown>,
+    ): Promise<boolean> => {
+      const clients = getOrderedClients();
+      if (clients.length === 0) return false;
+
+      const timeoutMs = swarmFailoverTimeout * 1000;
+
+      for (const c of clients) {
+        const { success } = await sendWithTimeout(
+          c,
+          roomId,
+          eventType,
+          content,
+          timeoutMs,
+        );
+        if (success) return true;
+      }
+      return false;
+    },
+    [getOrderedClients, swarmFailoverTimeout],
+  );
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     const body = message.trim();
-    if (!body || !currentRoomId || !client) return;
+    if (!body || !currentRoomId) return;
     setMessage("");
-    try {
-      if (sendMarkdown) {
-        await client.sendEvent(currentRoomId, EventType.RoomMessage, {
+    setSendError(null);
+
+    const content: Record<string, unknown> = sendMarkdown
+      ? {
           msgtype: MsgType.Text,
           body,
           format: "org.matrix.custom.html",
           formatted_body: markdownToMatrixHtml(body),
-        });
-      } else {
-        await client.sendEvent(currentRoomId, EventType.RoomMessage, {
-          msgtype: MsgType.Text,
-          body,
-        });
-      }
-    } catch (err) {
-      console.error("Send failed:", err);
+        }
+      : { msgtype: MsgType.Text, body };
+
+    const ok = await sendWithFailover(
+      currentRoomId,
+      EventType.RoomMessage,
+      content,
+    );
+    if (!ok) {
+      setSendError("Failed to send message. All accounts timed out.");
+      setTimeout(() => setSendError(null), 4000);
     }
   };
 
@@ -82,7 +142,7 @@ export default function MessageComposer() {
           info.w = dims.width;
           info.h = dims.height;
         }
-        await client.sendEvent(currentRoomId, EventType.RoomMessage, {
+        await sendWithFailover(currentRoomId, EventType.RoomMessage, {
           msgtype: MsgType.Image,
           body: file.name,
           url: mxcUrl,
@@ -99,7 +159,7 @@ export default function MessageComposer() {
           info.h = dims.height;
           info.duration = dims.duration;
         }
-        await client.sendEvent(currentRoomId, EventType.RoomMessage, {
+        await sendWithFailover(currentRoomId, EventType.RoomMessage, {
           msgtype: MsgType.Video,
           body: file.name,
           url: mxcUrl,
@@ -159,9 +219,15 @@ export default function MessageComposer() {
         </button>
       </form>
 
-      {uploadToast && (
-        <div className="fixed bottom-[72px] left-1/2 z-50 -translate-x-1/2 rounded-sm border border-border bg-surface2 px-5 py-2 text-[0.82rem] text-muted">
-          {uploadToast}
+      {(uploadToast || sendError) && (
+        <div
+          className={`fixed bottom-[72px] left-1/2 z-50 -translate-x-1/2 rounded-sm border border-border px-5 py-2 text-[0.82rem] ${
+            sendError
+              ? "bg-danger/20 text-danger border-danger/40"
+              : "bg-surface2 text-muted"
+          }`}
+        >
+          {sendError || uploadToast}
         </div>
       )}
     </>

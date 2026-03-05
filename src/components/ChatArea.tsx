@@ -8,6 +8,7 @@ import Timeline from "./Timeline";
 import FavouritesTimeline from "./FavouritesTimeline";
 import TypingIndicator from "./TypingIndicator";
 import MessageComposer from "./MessageComposer";
+import SwarmSelector from "./SwarmSelector";
 import AddToFavouritesModal from "./AddToFavouritesModal";
 
 interface ChatAreaProps {
@@ -114,7 +115,14 @@ export default function ChatArea({ onOpenSidebar }: ChatAreaProps) {
         />
       )}
       {!isFav && <TypingIndicator />}
-      {!isFav && currentRoomId && <MessageComposer />}
+      {!isFav && currentRoomId && (
+        <div className="flex items-center gap-1 border-t-0">
+          {currentRoomId && <SwarmSelector roomId={currentRoomId} />}
+          <div className="min-w-0 flex-1">
+            <MessageComposer />
+          </div>
+        </div>
+      )}
       {showAddToFavs && currentRoomId && (
         <AddToFavouritesModal
           sourceRoomId={currentRoomId}
