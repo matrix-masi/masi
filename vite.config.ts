@@ -20,6 +20,7 @@ function wasmContentTypePlugin(): Plugin {
 export default defineConfig({
   plugins: [wasmContentTypePlugin(), react(), tailwindcss(), viteSingleFile()],
   build: {
+    outDir: "docs",
     target: "esnext",
     assetsInlineLimit: 100000000,
     cssCodeSplit: false,

@@ -26,4 +26,4 @@ npm run dev
 npm run build
 ```
 
-The output is a single self-contained HTML file at `dist/index.html`. You can open it directly in a browser or host it anywhere.
+The output is a single self-contained HTML file at `docs/index.html`. You can open it directly in a browser or host it anywhere.
