@@ -1,5 +1,5 @@
-import { useEffect } from "react";
 import { useMatrix } from "./contexts/MatrixContext";
+import { useSwarm } from "./contexts/SwarmContext";
 import LoginScreen from "./components/LoginScreen";
 import AppScreen from "./components/AppScreen";
 import RecoveryModal from "./components/RecoveryModal";
@@ -7,15 +7,10 @@ import Lightbox from "./components/Lightbox";
 import PlaylistViewer from "./components/PlaylistViewer";
 
 export default function App() {
-  const { client, session, initFromSession } = useMatrix();
+  const { client } = useMatrix();
+  const { hasAnyAccounts } = useSwarm();
 
-  useEffect(() => {
-    if (session && !client) {
-      initFromSession(session);
-    }
-  }, [session, client, initFromSession]);
-
-  if (!client) {
+  if (!client && !hasAnyAccounts) {
     return <LoginScreen />;
   }
 

@@ -2,6 +2,7 @@ import { X, Sun, Moon, EyeOff, Bold, Image, MessageSquare, Clock, CheckCircle } 
 import { createPortal } from "react-dom";
 import { useTheme } from "../contexts/ThemeContext";
 import { useSettings } from "../contexts/SettingsContext";
+import SwarmManager from "./SwarmManager";
 
 interface SettingsModalProps {
   open: boolean;
@@ -51,7 +52,9 @@ export default function SettingsModal({
             Manage your account and client options.
           </p>
 
-          <div className="space-y-4">
+          <SwarmManager />
+
+          <div className="mt-6 space-y-4">
             <h3 className="text-[0.85rem] font-semibold uppercase tracking-wide text-muted">
               Appearance
             </h3>

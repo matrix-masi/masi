@@ -50,6 +50,7 @@ interface FetchMediaOpts {
   width?: number;
   height?: number;
   resizeMethod?: string;
+  fallbackClients?: MatrixClient[];
 }
 
 export function fetchMedia(
@@ -57,7 +58,7 @@ export function fetchMedia(
   client: MatrixClient,
   opts: FetchMediaOpts = {}
 ): Promise<string | null> {
-  const { thumbnail = false, width, height, resizeMethod } = opts;
+  const { thumbnail = false, width, height, resizeMethod, fallbackClients } = opts;
   const encFile = thumbnail ? getThumbnailFile(content) : getMediaFile(content);
   const mxcUrl = thumbnail
     ? getThumbnailUrl(content) || getMediaUrl(content)
@@ -67,20 +68,44 @@ export function fetchMedia(
     const mimetype = thumbnail
       ? content.info?.thumbnail_info?.mimetype || content.info?.mimetype
       : content.info?.mimetype;
-    return fetchAndDecryptMedia(client, encFile, mimetype, width, height, resizeMethod);
+    return fetchAndDecryptMedia(client, encFile, mimetype, width, height, resizeMethod, fallbackClients);
   }
-  return fetchAuthenticatedMedia(client, mxcUrl, width, height, resizeMethod);
+  return fetchAuthenticatedMedia(client, mxcUrl, width, height, resizeMethod, fallbackClients);
 }
 
-export function fetchAuthenticatedMedia(
+export async function fetchAuthenticatedMedia(
   client: MatrixClient,
   mxcUrl: string | null | undefined,
   width?: number,
   height?: number,
-  resizeMethod?: string
+  resizeMethod?: string,
+  fallbackClients?: MatrixClient[],
 ): Promise<string | null> {
-  if (!mxcUrl || !client) return Promise.resolve(null);
-  const cacheKey = `${mxcUrl}|${width || ""}|${height || ""}|${resizeMethod || ""}`;
+  if (!mxcUrl) return null;
+
+  const result = await tryFetchWithClient(client, mxcUrl, width, height, resizeMethod);
+  if (result) return result;
+
+  if (fallbackClients) {
+    for (const fc of fallbackClients) {
+      if (fc === client) continue;
+      const fbResult = await tryFetchWithClient(fc, mxcUrl, width, height, resizeMethod);
+      if (fbResult) return fbResult;
+    }
+  }
+  return null;
+}
+
+async function tryFetchWithClient(
+  client: MatrixClient,
+  mxcUrl: string,
+  width?: number,
+  height?: number,
+  resizeMethod?: string,
+): Promise<string | null> {
+  if (!client) return null;
+  const userId = client.getUserId() || "";
+  const cacheKey = `${mxcUrl}|${width || ""}|${height || ""}|${resizeMethod || ""}|${userId}`;
   if (blobUrlCache.has(cacheKey)) return blobUrlCache.get(cacheKey)!;
 
   const httpUrl = client.mxcUrlToHttp(
@@ -92,7 +117,7 @@ export function fetchAuthenticatedMedia(
     true,
     true
   );
-  if (!httpUrl) return Promise.resolve(null);
+  if (!httpUrl) return null;
 
   const promise = fetch(httpUrl, {
     headers: { Authorization: `Bearer ${client.getAccessToken()}` },
@@ -149,17 +174,40 @@ async function decryptAttachment(
   return new Uint8Array(decrypted) as Uint8Array<ArrayBuffer>;
 }
 
-function fetchAndDecryptMedia(
+async function fetchAndDecryptMedia(
   client: MatrixClient,
   encFile: EncryptedFile,
   mimetype?: string,
   width?: number,
   height?: number,
-  resizeMethod?: string
+  resizeMethod?: string,
+  fallbackClients?: MatrixClient[],
+): Promise<string | null> {
+  const result = await tryDecryptWithClient(client, encFile, mimetype, width, height, resizeMethod);
+  if (result) return result;
+
+  if (fallbackClients) {
+    for (const fc of fallbackClients) {
+      if (fc === client) continue;
+      const fbResult = await tryDecryptWithClient(fc, encFile, mimetype, width, height, resizeMethod);
+      if (fbResult) return fbResult;
+    }
+  }
+  return null;
+}
+
+async function tryDecryptWithClient(
+  client: MatrixClient,
+  encFile: EncryptedFile,
+  mimetype?: string,
+  width?: number,
+  height?: number,
+  resizeMethod?: string,
 ): Promise<string | null> {
   const mxcUrl = encFile.url;
-  if (!mxcUrl || !client) return Promise.resolve(null);
-  const cacheKey = `enc|${mxcUrl}`;
+  if (!mxcUrl || !client) return null;
+  const userId = client.getUserId() || "";
+  const cacheKey = `enc|${mxcUrl}|${userId}`;
   if (blobUrlCache.has(cacheKey)) return blobUrlCache.get(cacheKey)!;
 
   const httpUrl = client.mxcUrlToHttp(
@@ -171,7 +219,7 @@ function fetchAndDecryptMedia(
     true,
     true
   );
-  if (!httpUrl) return Promise.resolve(null);
+  if (!httpUrl) return null;
 
   const promise = fetch(httpUrl, {
     headers: { Authorization: `Bearer ${client.getAccessToken()}` },

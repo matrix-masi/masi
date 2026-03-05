@@ -4,46 +4,46 @@ overview: Add a "swarm" system where users manage multiple Matrix accounts acros
 todos:
   - id: phase1-crypto
     content: Create `src/lib/swarmCrypto.ts` with PBKDF2 key derivation and AES-GCM encrypt/decrypt using Web Crypto API
-    status: pending
+    status: completed
   - id: phase2-types-session
     content: Add Swarm/SwarmAccount/SwarmConfig types to `types.ts`; rewrite `session.ts` for multi-swarm storage with backward migration from old `matrix_session`
-    status: pending
+    status: completed
   - id: phase3-swarm-context
     content: Create `SwarmContext.tsx` and `swarmSyncScheduler`; adaptive sync for non-primary accounts (slow interval, missed-events threshold)
-    status: pending
+    status: completed
   - id: phase4-refactor-matrix-context
     content: Refactor `MatrixContext.tsx` to delegate client management to SwarmContext; expose activeSwarm, allSwarmClients, sendingSwarmId
-    status: pending
+    status: completed
   - id: phase5-merged-rooms
     content: Update `useRoomList.ts` and `useFavourites.ts` to merge rooms from all active swarm clients with deduplication
-    status: pending
+    status: completed
   - id: phase6-failover-sending
     content: Add configurable failover timeout to SettingsContext; implement `sendWithFailover()` in MessageComposer with timeout-based client rotation
-    status: pending
+    status: completed
   - id: phase7-swarm-room-join
     content: Create `swarmRoomJoin.ts` for staggered room joining across all swarm accounts when user joins a room
-    status: pending
+    status: completed
   - id: phase8-media-fallback
     content: Update `media.ts` to accept fallback clients; update Message.tsx ImageContent/VideoContent to pass swarm clients
-    status: pending
+    status: completed
   - id: phase9-swarm-selector
     content: Create `SwarmSelector.tsx` dropdown for chat bar when multiple swarms are in the same room; integrate into ChatArea
-    status: pending
+    status: completed
   - id: phase10-settings-ui
     content: Create `SwarmManager.tsx` component matching the mockup (swarm cards, account tables, add/remove, export); integrate into SettingsModal
-    status: pending
+    status: completed
   - id: phase11-import-export
     content: Add encrypted import/export for full app config (settings + swarms) on LoginScreen and SwarmManager, plus separate swarm-only import/export functions
-    status: pending
+    status: completed
   - id: phase11b-swarm-locks
     content: Add optional per-swarm passwords with unlock/re-lock flow and locked swarm behavior
-    status: pending
+    status: completed
   - id: phase12-key-sharing
     content: Create `swarmKeySharing.ts` for E2EE room key export/import between accounts within a swarm
-    status: pending
+    status: completed
   - id: phase13-main-wiring
     content: Update `main.tsx` to wrap app in SwarmProvider; verify end-to-end flow
-    status: pending
+    status: completed
 isProject: false
 ---
 

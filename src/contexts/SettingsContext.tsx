@@ -5,6 +5,8 @@ import {
   useCallback,
   type ReactNode,
 } from "react";
+import { loadAppConfig, updatePreferences } from "../lib/session";
+import { DEFAULT_PREFERENCES } from "../lib/types";
 
 interface SettingsContextValue {
   hideMedia: boolean;
@@ -20,54 +22,84 @@ interface SettingsContextValue {
   togglePlaylistShowMessages: () => void;
   playlistMessageDuration: number;
   setPlaylistMessageDuration: (s: number) => void;
+
+  swarmFailoverTimeout: number;
+  setSwarmFailoverTimeout: (s: number) => void;
+  swarmSecondarySyncIntervalMinutes: number;
+  setSwarmSecondarySyncIntervalMinutes: (m: number) => void;
+  swarmMissedEventsThreshold: number;
+  setSwarmMissedEventsThreshold: (n: number) => void;
 }
 
 const SettingsContext = createContext<SettingsContextValue | null>(null);
 
-function loadBool(key: string, fallback: boolean): boolean {
-  try {
-    const v = localStorage.getItem(key);
-    if (v === "true") return true;
-    if (v === "false") return false;
-  } catch {}
-  return fallback;
+function loadPref<K extends keyof typeof DEFAULT_PREFERENCES>(
+  key: K,
+): (typeof DEFAULT_PREFERENCES)[K] {
+  const config = loadAppConfig();
+  if (config?.preferences && key in config.preferences)
+    return config.preferences[key];
+
+  const lsMap: Record<string, string> = {
+    hideMedia: "setting_hideMedia",
+    sendMarkdown: "setting_sendMarkdown",
+    sendReadReceipts: "setting_sendReadReceipts",
+    playlistShowMessages: "setting_playlistShowMessages",
+    playlistImageDuration: "setting_playlistImageDuration",
+    playlistMessageDuration: "setting_playlistMessageDuration",
+  };
+  const lsKey = lsMap[key];
+  if (lsKey) {
+    try {
+      const v = localStorage.getItem(lsKey);
+      if (v !== null) {
+        if (v === "true") return true as (typeof DEFAULT_PREFERENCES)[K];
+        if (v === "false") return false as (typeof DEFAULT_PREFERENCES)[K];
+        const n = Number(v);
+        if (!Number.isNaN(n) && n > 0)
+          return n as (typeof DEFAULT_PREFERENCES)[K];
+      }
+    } catch {}
+  }
+  return DEFAULT_PREFERENCES[key];
 }
 
-function loadNumber(key: string, fallback: number): number {
-  try {
-    const v = localStorage.getItem(key);
-    if (v !== null) {
-      const n = Number(v);
-      if (!Number.isNaN(n) && n > 0) return n;
-    }
-  } catch {}
-  return fallback;
+function savePref<K extends keyof typeof DEFAULT_PREFERENCES>(
+  key: K,
+  value: (typeof DEFAULT_PREFERENCES)[K],
+) {
+  updatePreferences((prev) => ({ ...prev, [key]: value }));
 }
 
 export function SettingsProvider({ children }: { children: ReactNode }) {
-  const [hideMedia, setHideMedia] = useState(() =>
-    loadBool("setting_hideMedia", false),
-  );
+  const [hideMedia, setHideMedia] = useState(() => loadPref("hideMedia"));
   const [sendMarkdown, setSendMarkdown] = useState(() =>
-    loadBool("setting_sendMarkdown", true),
+    loadPref("sendMarkdown"),
   );
   const [sendReadReceipts, setSendReadReceipts] = useState(() =>
-    loadBool("setting_sendReadReceipts", true),
+    loadPref("sendReadReceipts"),
   );
   const [playlistImageDuration, _setPlaylistImageDuration] = useState(() =>
-    loadNumber("setting_playlistImageDuration", 5),
+    loadPref("playlistImageDuration"),
   );
   const [playlistShowMessages, setPlaylistShowMessages] = useState(() =>
-    loadBool("setting_playlistShowMessages", true),
+    loadPref("playlistShowMessages"),
   );
   const [playlistMessageDuration, _setPlaylistMessageDuration] = useState(() =>
-    loadNumber("setting_playlistMessageDuration", 5),
+    loadPref("playlistMessageDuration"),
   );
+  const [swarmFailoverTimeout, _setSwarmFailoverTimeout] = useState(() =>
+    loadPref("swarmFailoverTimeout"),
+  );
+  const [swarmSecondarySyncIntervalMinutes, _setSwarmSecondarySyncInterval] =
+    useState(() => loadPref("swarmSecondarySyncIntervalMinutes"));
+  const [swarmMissedEventsThreshold, _setSwarmMissedEventsThreshold] =
+    useState(() => loadPref("swarmMissedEventsThreshold"));
 
   const toggleHideMedia = useCallback(() => {
     setHideMedia((prev) => {
       const next = !prev;
-      localStorage.setItem("setting_hideMedia", String(next));
+      savePref("hideMedia", next);
       return next;
     });
   }, []);
@@ -75,7 +107,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const toggleSendMarkdown = useCallback(() => {
     setSendMarkdown((prev) => {
       const next = !prev;
-      localStorage.setItem("setting_sendMarkdown", String(next));
+      savePref("sendMarkdown", next);
       return next;
     });
   }, []);
@@ -83,7 +115,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const toggleSendReadReceipts = useCallback(() => {
     setSendReadReceipts((prev) => {
       const next = !prev;
-      localStorage.setItem("setting_sendReadReceipts", String(next));
+      savePref("sendReadReceipts", next);
       return next;
     });
   }, []);
@@ -91,7 +123,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const togglePlaylistShowMessages = useCallback(() => {
     setPlaylistShowMessages((prev) => {
       const next = !prev;
-      localStorage.setItem("setting_playlistShowMessages", String(next));
+      savePref("playlistShowMessages", next);
       return next;
     });
   }, []);
@@ -99,13 +131,31 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const setPlaylistImageDuration = useCallback((s: number) => {
     const clamped = Math.max(1, Math.round(s));
     _setPlaylistImageDuration(clamped);
-    localStorage.setItem("setting_playlistImageDuration", String(clamped));
+    savePref("playlistImageDuration", clamped);
   }, []);
 
   const setPlaylistMessageDuration = useCallback((s: number) => {
     const clamped = Math.max(1, Math.round(s));
     _setPlaylistMessageDuration(clamped);
-    localStorage.setItem("setting_playlistMessageDuration", String(clamped));
+    savePref("playlistMessageDuration", clamped);
+  }, []);
+
+  const setSwarmFailoverTimeout = useCallback((s: number) => {
+    const clamped = Math.max(1, Math.round(s));
+    _setSwarmFailoverTimeout(clamped);
+    savePref("swarmFailoverTimeout", clamped);
+  }, []);
+
+  const setSwarmSecondarySyncIntervalMinutes = useCallback((m: number) => {
+    const clamped = Math.max(1, Math.min(5, Math.round(m)));
+    _setSwarmSecondarySyncInterval(clamped);
+    savePref("swarmSecondarySyncIntervalMinutes", clamped);
+  }, []);
+
+  const setSwarmMissedEventsThreshold = useCallback((n: number) => {
+    const clamped = Math.max(1, Math.round(n));
+    _setSwarmMissedEventsThreshold(clamped);
+    savePref("swarmMissedEventsThreshold", clamped);
   }, []);
 
   return (
@@ -123,6 +173,12 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         togglePlaylistShowMessages,
         playlistMessageDuration,
         setPlaylistMessageDuration,
+        swarmFailoverTimeout,
+        setSwarmFailoverTimeout,
+        swarmSecondarySyncIntervalMinutes,
+        setSwarmSecondarySyncIntervalMinutes,
+        swarmMissedEventsThreshold,
+        setSwarmMissedEventsThreshold,
       }}
     >
       {children}
