@@ -209,7 +209,7 @@ export default function ServerRoomSearchModal({
 
     try {
       const data = await fetchPublicRoomsDirect(server, limit);
-      rooms = (data.chunk ?? []) as PublicRoomEntry[];
+      rooms = (data.chunk ?? []) as unknown as PublicRoomEntry[];
     } catch { /* direct failed – try via SDK */ }
 
     if (rooms === null && client) {
