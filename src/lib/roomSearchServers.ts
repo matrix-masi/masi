@@ -1,5 +1,14 @@
+/// <reference types="vite/client" />
 const JOINMATRIX_SERVERS_URL =
   "https://servers.joinmatrix.org/servers.json";
+
+/** In dev we use Vite proxy (same-origin). In production we use a CORS proxy because the single-file app runs from file:// or arbitrary origin. */
+function getServersListUrl(): string {
+  if (import.meta.env.DEV) {
+    return "/joinmatrix-servers.json";
+  }
+  return `https://api.allorigins.win/raw?url=${encodeURIComponent(JOINMATRIX_SERVERS_URL)}`;
+}
 
 export interface RoomSearchServer {
   id: string;
@@ -26,7 +35,7 @@ function serverDomainToHost(serverDomain: string): string {
 
 export async function fetchJoinMatrixServers(): Promise<RoomSearchServer[]> {
   if (serversCache) return serversCache;
-  const res = await fetch(JOINMATRIX_SERVERS_URL);
+  const res = await fetch(getServersListUrl());
   if (!res.ok) throw new Error(`Failed to fetch servers: ${res.status}`);
   const data = (await res.json()) as JoinMatrixResponse;
   const entries = [
