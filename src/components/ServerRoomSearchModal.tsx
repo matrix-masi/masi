@@ -68,6 +68,7 @@ export default function ServerRoomSearchModal({
   const [createRoomError, setCreateRoomError] = useState<string | null>(null);
 
   const searchResultsRef = useRef<HTMLDivElement>(null);
+  const searchGenerationRef = useRef(0);
 
   const loadServers = useCallback(async () => {
     setServersLoading(true);
@@ -252,47 +253,55 @@ export default function ServerRoomSearchModal({
     setSearchError(null);
     setSearchLoading(true);
     setSearchResults([]);
-    try {
-      const term = searchQuery.trim() || undefined;
-      const settled = await Promise.allSettled(
-        hosts.map((server) => fetchPublicRoomsForServer(server, term, 50)),
+    setSelectedRoomIds(new Set());
+    const generation = ++searchGenerationRef.current;
+    const term = searchQuery.trim() || undefined;
+
+    const mergeResults = (host: string, rooms: PublicRoomEntry[]) => {
+      if (searchGenerationRef.current !== generation) return;
+      const withServer: (PublicRoomEntry & { _serverHost: string })[] = rooms.map(
+        (r) => ({ ...r, _serverHost: host }),
       );
-      const all: (PublicRoomEntry & { _serverHost: string })[] = [];
-      const byId = new Map<string, PublicRoomEntry & { _serverHost: string }>();
-      settled.forEach((result, i) => {
-        const host = hosts[i];
-        if (result.status === "fulfilled" && result.value) {
-          for (const room of result.value) {
-            const withServer = { ...room, _serverHost: host };
-            if (!byId.has(room.room_id)) {
-              byId.set(room.room_id, withServer);
-              all.push(withServer);
-            }
-          }
-        }
+      const toAdd = allowNsfwRooms
+        ? withServer
+        : withServer.filter((r) => !isNsfwRoom(r));
+      if (toAdd.length === 0) return;
+      setSearchResults((prev) => {
+        if (searchGenerationRef.current !== generation) return prev;
+        const seen = new Set(prev.map((r) => r.room_id));
+        const added = toAdd.filter((r) => !seen.has(r.room_id));
+        return added.length ? [...prev, ...added] : prev;
       });
-      let filtered = all;
-      if (!allowNsfwRooms) {
-        filtered = all.filter((r) => !isNsfwRoom(r));
-      }
-      setSearchResults(filtered);
-      setSelectedRoomIds(new Set());
-    } catch (err) {
-      setSearchError(
-        err instanceof Error ? err.message : "Search failed.",
-      );
+    };
+
+    const promises = hosts.map((server) =>
+      fetchPublicRoomsForServer(server, term, 50),
+    );
+    hosts.forEach((host, i) => {
+      promises[i]
+        .then((rooms) => mergeResults(host, rooms))
+        .catch(() => {});
+    });
+
+    try {
+      await Promise.allSettled(promises);
     } finally {
-      setSearchLoading(false);
+      if (searchGenerationRef.current === generation) {
+        setSearchLoading(false);
+      }
     }
   };
 
+  const prevResultsLengthRef = useRef(0);
   useEffect(() => {
-    if (searchResults.length > 0) {
+    const n = searchResults.length;
+    if (n > 0 && prevResultsLengthRef.current === 0) {
       searchResultsRef.current?.scrollIntoView({
         behavior: "smooth",
         block: "nearest",
       });
     }
+    prevResultsLengthRef.current = n;
   }, [searchResults.length]);
 
   const toggleRoom = (roomId: string) => {
