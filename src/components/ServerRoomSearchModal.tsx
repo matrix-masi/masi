@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { X, Plus } from "lucide-react";
 import { useMatrix } from "../contexts/MatrixContext";
@@ -6,6 +6,7 @@ import { useSettings } from "../contexts/SettingsContext";
 import { joinRoomWithSwarm } from "../lib/swarmRoomJoin";
 import {
   fetchJoinMatrixServers,
+  fetchPublicRoomsDirect,
   parseRoomLink,
   isNsfwRoom,
   type RoomSearchServer,
@@ -47,6 +48,7 @@ export default function ServerRoomSearchModal({
   const [selectedServerHosts, setSelectedServerHosts] = useState<Set<string>>(
     new Set(),
   );
+  const [serverSearchQuery, setServerSearchQuery] = useState("");
   const [customServerInput, setCustomServerInput] = useState("");
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -64,6 +66,8 @@ export default function ServerRoomSearchModal({
   const [createRoomName, setCreateRoomName] = useState("");
   const [createRoomLoading, setCreateRoomLoading] = useState(false);
   const [createRoomError, setCreateRoomError] = useState<string | null>(null);
+
+  const searchResultsRef = useRef<HTMLDivElement>(null);
 
   const loadServers = useCallback(async () => {
     setServersLoading(true);
@@ -190,6 +194,54 @@ export default function ServerRoomSearchModal({
     });
   };
 
+  /**
+   * Fetch public rooms for a single server.
+   * Strategy: query the server directly (bypasses federation issues),
+   * fall back to SDK `client.publicRooms({ server })` if direct fails.
+   */
+  const fetchPublicRoomsForServer = async (
+    server: string,
+    searchTerm: string | undefined,
+    limit: number,
+  ): Promise<PublicRoomEntry[]> => {
+    let rooms: PublicRoomEntry[] | null = null;
+
+    try {
+      const data = await fetchPublicRoomsDirect(server, limit);
+      rooms = (data.chunk ?? []) as PublicRoomEntry[];
+    } catch { /* direct failed – try via SDK */ }
+
+    if (rooms === null && client) {
+      try {
+        const filter = searchTerm
+          ? { generic_search_term: searchTerm }
+          : undefined;
+        const opts = filter
+          ? { limit, filter, server }
+          : { limit, server };
+        const res = await client.publicRooms(
+          opts as Parameters<typeof client.publicRooms>[0],
+        );
+        rooms = (res?.chunk ?? []) as PublicRoomEntry[];
+      } catch { /* sdk also failed */ }
+    }
+
+    if (!rooms) return [];
+
+    if (searchTerm) {
+      const q = searchTerm.toLowerCase();
+      rooms = rooms.filter(
+        (r) =>
+          r.name?.toLowerCase().includes(q) ||
+          r.topic?.toLowerCase().includes(q) ||
+          r.canonical_alias?.toLowerCase().includes(q) ||
+          r.aliases?.some((a) => a.toLowerCase().includes(q)),
+      );
+    }
+
+    return rooms;
+  };
+
   const runSearch = async () => {
     if (!client) return;
     const hosts = Array.from(selectedServerHosts);
@@ -201,24 +253,16 @@ export default function ServerRoomSearchModal({
     setSearchLoading(true);
     setSearchResults([]);
     try {
-      const filter = searchQuery.trim()
-        ? { generic_search_term: searchQuery.trim() }
-        : undefined;
-      const opts = filter
-        ? { limit: 50, filter }
-        : { limit: 50 };
+      const term = searchQuery.trim() || undefined;
       const settled = await Promise.allSettled(
-        hosts.map((server) =>
-          client.publicRooms({ ...opts, server } as Parameters<typeof client.publicRooms>[0]),
-        ),
+        hosts.map((server) => fetchPublicRoomsForServer(server, term, 50)),
       );
       const all: (PublicRoomEntry & { _serverHost: string })[] = [];
       const byId = new Map<string, PublicRoomEntry & { _serverHost: string }>();
       settled.forEach((result, i) => {
         const host = hosts[i];
-        if (result.status === "fulfilled" && result.value?.chunk) {
-          const chunk = result.value.chunk as PublicRoomEntry[];
-          for (const room of chunk) {
+        if (result.status === "fulfilled" && result.value) {
+          for (const room of result.value) {
             const withServer = { ...room, _serverHost: host };
             if (!byId.has(room.room_id)) {
               byId.set(room.room_id, withServer);
@@ -241,6 +285,15 @@ export default function ServerRoomSearchModal({
       setSearchLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (searchResults.length > 0) {
+      searchResultsRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest",
+      });
+    }
+  }, [searchResults.length]);
 
   const toggleRoom = (roomId: string) => {
     setSelectedRoomIds((prev) => {
@@ -285,7 +338,41 @@ export default function ServerRoomSearchModal({
     ...serverList,
     ...customOnly.map((host) => ({ id: host, name: host, host })),
   ];
+  const serverSearchLower = serverSearchQuery.trim().toLowerCase();
+  const filteredServers = serverSearchLower
+    ? allServers.filter(
+        (s) =>
+          s.name.toLowerCase().includes(serverSearchLower) ||
+          s.host.toLowerCase().includes(serverSearchLower),
+      )
+    : allServers;
   const customSet = new Set(customRoomSearchServers);
+
+  const selectTop50Servers = () => {
+    const top50 = filteredServers.slice(0, 50).map((s) => s.host);
+    setSelectedServerHosts(new Set(top50));
+  };
+
+  function latencyPill(ms: number | undefined) {
+    const label =
+      ms == null ? "—" : ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`;
+    const color =
+      ms == null
+        ? "bg-red-500/20 text-red-600 dark:text-red-400"
+        : ms < 200
+          ? "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400"
+          : ms < 500
+            ? "bg-amber-500/20 text-amber-600 dark:text-amber-400"
+            : "bg-red-500/20 text-red-600 dark:text-red-400";
+    return (
+      <span
+        className={`shrink-0 rounded-full px-1.5 py-0.5 text-[0.7rem] font-medium ${color}`}
+        title={ms == null ? "Unknown / timeout" : `${ms}ms latency`}
+      >
+        {label}
+      </span>
+    );
+  }
 
   return createPortal(
     <div className="fixed inset-0 z-100 bg-surface">
@@ -380,36 +467,55 @@ export default function ServerRoomSearchModal({
                 ) : serversError ? (
                   <p className="text-[0.85rem] text-danger">{serversError}</p>
                 ) : (
-                  <div className="max-h-40 overflow-y-auto rounded-lg border border-border bg-surface2 p-2 space-y-1">
-                    {allServers.map((srv) => (
-                      <label
-                        key={srv.id}
-                        className="flex items-center gap-2 cursor-pointer"
+                  <>
+                    <div className="flex gap-2 mb-2">
+                      <input
+                        type="text"
+                        placeholder="Search servers by name or host"
+                        value={serverSearchQuery}
+                        onChange={(e) => setServerSearchQuery(e.target.value)}
+                        className="flex-1 min-w-0 rounded-sm border border-border bg-background px-3 py-2 text-[0.85rem] text-foreground outline-none focus:border-accent"
+                      />
+                      <button
+                        type="button"
+                        onClick={selectTop50Servers}
+                        className="shrink-0 rounded-sm border border-border px-3 py-2 text-[0.85rem] transition-colors hover:bg-surface2"
                       >
-                        <input
-                          type="checkbox"
-                          checked={selectedServerHosts.has(srv.host)}
-                          onChange={() => toggleServer(srv.host)}
-                          className="rounded border-border"
-                        />
-                        <span className="text-[0.85rem] truncate">
-                          {srv.name}
-                        </span>
-                        {customSet.has(srv.host) && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              removeCustomServer(srv.host);
-                            }}
-                            className="ml-auto text-[0.75rem] text-muted hover:text-foreground"
-                          >
-                            Remove
-                          </button>
-                        )}
-                      </label>
-                    ))}
-                  </div>
+                        Select top 50
+                      </button>
+                    </div>
+                    <div className="max-h-40 overflow-y-auto rounded-lg border border-border bg-surface2 p-2 space-y-1">
+                      {filteredServers.map((srv) => (
+                        <label
+                          key={srv.id}
+                          className="flex items-center gap-2 cursor-pointer"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedServerHosts.has(srv.host)}
+                            onChange={() => toggleServer(srv.host)}
+                            className="rounded border-border"
+                          />
+                          {latencyPill(srv.responseTimeMs)}
+                          <span className="text-[0.85rem] truncate min-w-0">
+                            {srv.name}
+                          </span>
+                          {customSet.has(srv.host) && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                removeCustomServer(srv.host);
+                              }}
+                              className="ml-auto text-[0.75rem] text-muted hover:text-foreground shrink-0"
+                            >
+                              Remove
+                            </button>
+                          )}
+                        </label>
+                      ))}
+                    </div>
+                  </>
                 )}
                 <div className="mt-2 flex gap-2">
                   <input
@@ -458,7 +564,7 @@ export default function ServerRoomSearchModal({
                 )}
 
                 {searchResults.length > 0 && (
-                  <div className="mt-3">
+                  <div ref={searchResultsRef} className="mt-3">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-[0.8rem] text-muted">
                         {searchResults.length} room(s)
