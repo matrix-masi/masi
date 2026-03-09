@@ -362,6 +362,26 @@ export default function ServerRoomSearchModal({
     setSelectedServerHosts(new Set(top50));
   };
 
+  const allFilteredServersSelected =
+    filteredServers.length > 0 &&
+    filteredServers.every((s) => selectedServerHosts.has(s.host));
+
+  const toggleSelectAllServers = () => {
+    if (allFilteredServersSelected) {
+      setSelectedServerHosts((prev) => {
+        const next = new Set(prev);
+        filteredServers.forEach((s) => next.delete(s.host));
+        return next;
+      });
+    } else {
+      setSelectedServerHosts((prev) => {
+        const next = new Set(prev);
+        filteredServers.forEach((s) => next.add(s.host));
+        return next;
+      });
+    }
+  };
+
   function latencyPill(ms: number | undefined) {
     const label =
       ms == null ? "—" : ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`;
@@ -477,14 +497,35 @@ export default function ServerRoomSearchModal({
                   <p className="text-[0.85rem] text-danger">{serversError}</p>
                 ) : (
                   <>
-                    <div className="flex gap-2 mb-2">
-                      <input
-                        type="text"
-                        placeholder="Search servers by name or host"
-                        value={serverSearchQuery}
-                        onChange={(e) => setServerSearchQuery(e.target.value)}
-                        className="flex-1 min-w-0 rounded-sm border border-border bg-background px-3 py-2 text-[0.85rem] text-foreground outline-none focus:border-accent"
-                      />
+                    <div className="flex gap-2 mb-2 flex-wrap items-center">
+                      <div className="flex flex-1 min-w-0 relative items-center">
+                        <input
+                          type="text"
+                          placeholder="Search servers by name or host"
+                          value={serverSearchQuery}
+                          onChange={(e) => setServerSearchQuery(e.target.value)}
+                          className="w-full rounded-sm border border-border bg-background px-3 py-2 pr-8 text-[0.85rem] text-foreground outline-none focus:border-accent"
+                        />
+                        {serverSearchQuery.trim() !== "" && (
+                          <button
+                            type="button"
+                            onClick={() => setServerSearchQuery("")}
+                            title="Clear search"
+                            className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1 text-muted transition-colors hover:text-foreground"
+                          >
+                            <X size={16} strokeWidth={2} />
+                          </button>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={toggleSelectAllServers}
+                        className="shrink-0 rounded-sm border border-border px-3 py-2 text-[0.85rem] transition-colors hover:bg-surface2"
+                      >
+                        {allFilteredServersSelected
+                          ? "Deselect all"
+                          : "Select all"}
+                      </button>
                       <button
                         type="button"
                         onClick={selectTop50Servers}
