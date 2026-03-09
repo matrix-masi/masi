@@ -21,11 +21,11 @@ export default defineConfig({
   plugins: [wasmContentTypePlugin(), react(), tailwindcss(), viteSingleFile()],
   server: {
     proxy: {
-      // Avoid CORS when fetching room search server list in dev (joinmatrix.org doesn't send CORS headers)
-      "/joinmatrix-servers.json": {
-        target: "https://servers.joinmatrix.org",
+      // Avoid CORS when fetching room search server list in dev
+      "/online-homeservers.json": {
+        target: "https://raw.githubusercontent.com",
         changeOrigin: true,
-        rewrite: () => "/servers.json",
+        rewrite: () => "/matrix-masi/homeservers/main/online-homeservers.json",
       },
     },
   },

@@ -1,13 +1,13 @@
 /// <reference types="vite/client" />
-const JOINMATRIX_SERVERS_URL =
-  "https://servers.joinmatrix.org/servers.json";
+const HOMESERVERS_JSON_URL =
+  "https://raw.githubusercontent.com/matrix-masi/homeservers/main/online-homeservers.json";
 
 /** In dev we use Vite proxy (same-origin). In production we use a CORS proxy because the single-file app runs from file:// or arbitrary origin. */
 function getServersListUrl(): string {
   if (import.meta.env.DEV) {
-    return "/joinmatrix-servers.json";
+    return "/online-homeservers.json";
   }
-  return `https://api.allorigins.win/raw?url=${encodeURIComponent(JOINMATRIX_SERVERS_URL)}`;
+  return `https://api.allorigins.win/raw?url=${encodeURIComponent(HOMESERVERS_JSON_URL)}`;
 }
 
 export interface RoomSearchServer {
@@ -16,44 +16,48 @@ export interface RoomSearchServer {
   host: string;
 }
 
-interface JoinMatrixServerEntry {
+interface OnlineHomeserverEntry {
   name?: string;
-  server_domain?: string;
-}
-
-interface JoinMatrixResponse {
-  public_servers?: JoinMatrixServerEntry[];
-  private_servers?: JoinMatrixServerEntry[];
+  url?: string;
+  status?: string;
+  responseTimeMs?: number;
 }
 
 let serversCache: RoomSearchServer[] | null = null;
 
-function serverDomainToHost(serverDomain: string): string {
-  const idx = serverDomain.indexOf(":");
-  return idx >= 0 ? serverDomain.slice(0, idx) : serverDomain;
+function urlToHost(url: string): string {
+  try {
+    const u = new URL(url);
+    return u.hostname;
+  } catch {
+    const idx = url.indexOf(":");
+    return idx >= 0 ? url.slice(0, idx) : url;
+  }
 }
 
 export async function fetchJoinMatrixServers(): Promise<RoomSearchServer[]> {
   if (serversCache) return serversCache;
   const res = await fetch(getServersListUrl());
   if (!res.ok) throw new Error(`Failed to fetch servers: ${res.status}`);
-  const data = (await res.json()) as JoinMatrixResponse;
-  const entries = [
-    ...(data.public_servers ?? []),
-    ...(data.private_servers ?? []),
-  ];
+  const data = (await res.json()) as OnlineHomeserverEntry[];
+  const entries = Array.isArray(data) ? data : [];
+  const withTime = entries
+    .filter((e) => e.url?.trim() && e.status === "online")
+    .map((e) => ({
+      name: e.name?.trim() || urlToHost(e.url!),
+      host: urlToHost(e.url!),
+      responseTimeMs: typeof e.responseTimeMs === "number" ? e.responseTimeMs : Infinity,
+    }))
+    .sort((a, b) => a.responseTimeMs - b.responseTimeMs);
   const seen = new Set<string>();
   const list: RoomSearchServer[] = [];
-  for (const entry of entries) {
-    const domain = entry.server_domain?.trim();
-    if (!domain) continue;
-    const host = serverDomainToHost(domain);
-    if (seen.has(host)) continue;
-    seen.add(host);
+  for (const entry of withTime) {
+    if (seen.has(entry.host)) continue;
+    seen.add(entry.host);
     list.push({
-      id: host,
-      name: entry.name?.trim() || host,
-      host,
+      id: entry.host,
+      name: entry.name,
+      host: entry.host,
     });
   }
   serversCache = list;
