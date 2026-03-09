@@ -10,6 +10,7 @@ import {
   isNsfwRoom,
   type RoomSearchServer,
 } from "../lib/roomSearchServers";
+import { Visibility, Preset } from "matrix-js-sdk";
 
 interface PublicRoomEntry {
   room_id: string;
@@ -59,6 +60,10 @@ export default function ServerRoomSearchModal({
   );
   const [joinSelectedLoading, setJoinSelectedLoading] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+
+  const [createRoomName, setCreateRoomName] = useState("");
+  const [createRoomLoading, setCreateRoomLoading] = useState(false);
+  const [createRoomError, setCreateRoomError] = useState<string | null>(null);
 
   const loadServers = useCallback(async () => {
     setServersLoading(true);
@@ -119,6 +124,39 @@ export default function ServerRoomSearchModal({
       );
     } finally {
       setJoinByLinkLoading(false);
+    }
+  };
+
+  const handleCreateRoom = async () => {
+    if (!client) {
+      setCreateRoomError("Not logged in.");
+      return;
+    }
+    const name = createRoomName.trim();
+    if (!name) {
+      setCreateRoomError("Enter a room name.");
+      return;
+    }
+    setCreateRoomError(null);
+    setCreateRoomLoading(true);
+    try {
+      const resp = await client.createRoom({
+        name,
+        visibility: Visibility.Private,
+        preset: Preset.PrivateChat,
+        invite: [],
+      });
+      setCreateRoomName("");
+      setToast("Room created.");
+      setTimeout(() => setToast(null), 2000);
+      setCurrentRoomId(resp.room_id);
+      onClose();
+    } catch (err) {
+      setCreateRoomError(
+        err instanceof Error ? err.message : "Failed to create room.",
+      );
+    } finally {
+      setCreateRoomLoading(false);
     }
   };
 
@@ -296,6 +334,39 @@ export default function ServerRoomSearchModal({
                 {joinByLinkError && (
                   <p className="mt-1.5 text-[0.8rem] text-danger">
                     {joinByLinkError}
+                  </p>
+                )}
+              </section>
+
+              <section>
+                <h3 className="text-[0.85rem] font-semibold uppercase tracking-wide text-muted mb-2">
+                  Create new room
+                </h3>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Room name"
+                    value={createRoomName}
+                    onChange={(e) => {
+                      setCreateRoomName(e.target.value);
+                      setCreateRoomError(null);
+                    }}
+                    onKeyDown={(e) =>
+                      e.key === "Enter" && (e.preventDefault(), handleCreateRoom())
+                    }
+                    className="flex-1 min-w-0 rounded-sm border border-border bg-background px-3 py-2 text-[0.9rem] text-foreground outline-none focus:border-accent"
+                  />
+                  <button
+                    onClick={handleCreateRoom}
+                    disabled={createRoomLoading || !createRoomName.trim()}
+                    className="shrink-0 rounded-sm bg-accent px-4 py-2 text-[0.9rem] font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-50"
+                  >
+                    {createRoomLoading ? "…" : "Create"}
+                  </button>
+                </div>
+                {createRoomError && (
+                  <p className="mt-1.5 text-[0.8rem] text-danger">
+                    {createRoomError}
                   </p>
                 )}
               </section>
