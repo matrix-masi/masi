@@ -241,6 +241,7 @@ export function loadAppConfig(): AppConfig | null {
     const obj = JSON.parse(raw);
     if (isEnvelope(obj)) return null;
     const config = obj as AppConfig;
+    config.preferences = { ...DEFAULT_PREFERENCES, ...config.preferences };
     decryptedConfig = config;
     return config;
   } catch {
@@ -272,7 +273,10 @@ export async function unlockMasterPassword(
         swarms: inner.swarms,
         activeSwarmId: envelope.activeSwarmId,
       },
-      preferences: inner.preferences ?? { ...DEFAULT_PREFERENCES },
+      preferences: {
+        ...DEFAULT_PREFERENCES,
+        ...inner.preferences,
+      },
     };
     decryptedConfig = config;
     sessionPassword = password;
@@ -345,7 +349,10 @@ export async function disableMasterEncryption(
           swarms: inner.swarms,
           activeSwarmId: envelope.activeSwarmId,
         },
-        preferences: inner.preferences ?? { ...DEFAULT_PREFERENCES },
+        preferences: {
+          ...DEFAULT_PREFERENCES,
+          ...inner.preferences,
+        },
       };
     } catch {
       return false;

@@ -46,6 +46,8 @@ export interface AppPreferences {
   swarmSecondarySyncIntervalMinutes: number;
   swarmMissedEventsThreshold: number;
   storeAccountPasswords: boolean;
+  customRoomSearchServers: string[];
+  allowNsfwRooms: boolean;
 }
 
 export interface AppConfig {
@@ -96,4 +98,6 @@ export const DEFAULT_PREFERENCES: AppPreferences = {
   swarmSecondarySyncIntervalMinutes: 2,
   swarmMissedEventsThreshold: 3,
   storeAccountPasswords: false,
+  customRoomSearchServers: [],
+  allowNsfwRooms: true,
 };

@@ -5,6 +5,7 @@ import { useFavourites, getFavouritesListName } from "../hooks/useFavourites";
 import RoomItem from "./RoomItem";
 import SettingsModal from "./SettingsModal";
 import CreateFavouritesListModal from "./CreateFavouritesListModal";
+import ServerRoomSearchModal from "./ServerRoomSearchModal";
 
 interface SidebarProps {
   open: boolean;
@@ -18,6 +19,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
   const [displayName, setDisplayName] = useState("");
   const [showSettings, setShowSettings] = useState(false);
   const [showCreateList, setShowCreateList] = useState(false);
+  const [showServerRoomSearch, setShowServerRoomSearch] = useState(false);
   const { favouriteRooms, regularRooms } = useFavourites(filter);
 
   useEffect(() => {
@@ -58,13 +60,22 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
         </button>
       </div>
 
-      <input
-        type="text"
-        placeholder="Search rooms…"
-        value={filter}
-        onChange={(e) => setFilter(e.target.value)}
-        className="mx-3 my-2 w-[calc(100%-1.5rem)] rounded-sm border border-border bg-background px-3.5 py-2.5 text-[0.9rem] text-foreground outline-none transition-colors focus:border-accent"
-      />
+      <div className="mx-3 my-2 flex items-center gap-1.5">
+        <input
+          type="text"
+          placeholder="Search rooms…"
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          className="flex-1 min-w-0 rounded-sm border border-border bg-background px-3.5 py-2.5 text-[0.9rem] text-foreground outline-none transition-colors focus:border-accent"
+        />
+        <button
+          onClick={() => setShowServerRoomSearch(true)}
+          title="Discover rooms"
+          className="shrink-0 rounded-sm p-2.5 text-muted transition-colors hover:bg-surface2 hover:text-foreground"
+        >
+          <Plus size={18} strokeWidth={2} />
+        </button>
+      </div>
 
       {syncing ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-3 p-10 text-[0.84rem] text-muted">
@@ -155,6 +166,10 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
       {showCreateList && (
         <CreateFavouritesListModal onClose={() => setShowCreateList(false)} />
       )}
+      <ServerRoomSearchModal
+        open={showServerRoomSearch}
+        onClose={() => setShowServerRoomSearch(false)}
+      />
     </aside>
   );
 }

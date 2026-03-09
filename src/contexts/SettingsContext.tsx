@@ -32,6 +32,11 @@ interface SettingsContextValue {
 
   storeAccountPasswords: boolean;
   setStoreAccountPasswords: (v: boolean) => void;
+
+  customRoomSearchServers: string[];
+  setCustomRoomSearchServers: (v: string[]) => void;
+  allowNsfwRooms: boolean;
+  setAllowNsfwRooms: (v: boolean) => void;
 }
 
 const SettingsContext = createContext<SettingsContextValue | null>(null);
@@ -101,6 +106,12 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const [storeAccountPasswords, _setStoreAccountPasswords] = useState(() =>
     loadPref("storeAccountPasswords"),
   );
+  const [customRoomSearchServers, _setCustomRoomSearchServers] = useState(
+    () => loadPref("customRoomSearchServers"),
+  );
+  const [allowNsfwRooms, _setAllowNsfwRooms] = useState(() =>
+    loadPref("allowNsfwRooms"),
+  );
 
   const toggleHideMedia = useCallback(() => {
     setHideMedia((prev) => {
@@ -169,6 +180,16 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     savePref("storeAccountPasswords", v);
   }, []);
 
+  const setCustomRoomSearchServers = useCallback((v: string[]) => {
+    _setCustomRoomSearchServers(v);
+    savePref("customRoomSearchServers", v);
+  }, []);
+
+  const setAllowNsfwRooms = useCallback((v: boolean) => {
+    _setAllowNsfwRooms(v);
+    savePref("allowNsfwRooms", v);
+  }, []);
+
   return (
     <SettingsContext.Provider
       value={{
@@ -192,6 +213,10 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         setSwarmMissedEventsThreshold,
         storeAccountPasswords,
         setStoreAccountPasswords,
+        customRoomSearchServers,
+        setCustomRoomSearchServers,
+        allowNsfwRooms,
+        setAllowNsfwRooms,
       }}
     >
       {children}

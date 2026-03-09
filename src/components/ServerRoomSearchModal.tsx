@@ -1,0 +1,450 @@
+import { useState, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
+import { X, Plus } from "lucide-react";
+import { useMatrix } from "../contexts/MatrixContext";
+import { useSettings } from "../contexts/SettingsContext";
+import { joinRoomWithSwarm } from "../lib/swarmRoomJoin";
+import {
+  fetchJoinMatrixServers,
+  parseRoomLink,
+  isNsfwRoom,
+  type RoomSearchServer,
+} from "../lib/roomSearchServers";
+
+interface PublicRoomEntry {
+  room_id: string;
+  name?: string;
+  topic?: string;
+  num_joined_members?: number;
+  canonical_alias?: string;
+  aliases?: string[];
+}
+
+interface ServerRoomSearchModalProps {
+  open: boolean;
+  onClose: () => void;
+}
+
+export default function ServerRoomSearchModal({
+  open,
+  onClose,
+}: ServerRoomSearchModalProps) {
+  const { client, allSwarmClients, setCurrentRoomId } = useMatrix();
+  const {
+    customRoomSearchServers,
+    setCustomRoomSearchServers,
+    allowNsfwRooms,
+  } = useSettings();
+
+  const [joinByLinkInput, setJoinByLinkInput] = useState("");
+  const [joinByLinkError, setJoinByLinkError] = useState<string | null>(null);
+  const [joinByLinkLoading, setJoinByLinkLoading] = useState(false);
+
+  const [serverList, setServerList] = useState<RoomSearchServer[]>([]);
+  const [serversLoading, setServersLoading] = useState(false);
+  const [serversError, setServersError] = useState<string | null>(null);
+  const [selectedServerHosts, setSelectedServerHosts] = useState<Set<string>>(
+    new Set(),
+  );
+  const [customServerInput, setCustomServerInput] = useState("");
+
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [searchResults, setSearchResults] = useState<
+    (PublicRoomEntry & { _serverHost: string })[]
+  >([]);
+  const [selectedRoomIds, setSelectedRoomIds] = useState<Set<string>>(
+    new Set(),
+  );
+  const [joinSelectedLoading, setJoinSelectedLoading] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+
+  const loadServers = useCallback(async () => {
+    setServersLoading(true);
+    setServersError(null);
+    try {
+      const list = await fetchJoinMatrixServers();
+      setServerList(list);
+    } catch (err) {
+      setServersError(
+        err instanceof Error ? err.message : "Failed to load server list",
+      );
+    } finally {
+      setServersLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (open) loadServers();
+  }, [open, loadServers]);
+
+  useEffect(() => {
+    const onEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onEscape);
+    return () => window.removeEventListener("keydown", onEscape);
+  }, [onClose]);
+
+  const handleJoinByLink = async () => {
+    if (!client || allSwarmClients.length === 0) {
+      setJoinByLinkError("Not logged in.");
+      return;
+    }
+    const parsed = parseRoomLink(joinByLinkInput);
+    if (!parsed) {
+      setJoinByLinkError(
+        "Enter a matrix.to link or a room ID (!...) or alias (#...).",
+      );
+      return;
+    }
+    setJoinByLinkError(null);
+    setJoinByLinkLoading(true);
+    try {
+      const results = await joinRoomWithSwarm(parsed, allSwarmClients);
+      const failed = results.filter((r) => !r.success);
+      if (failed.length > 0) {
+        setJoinByLinkError(failed[0].error ?? "Failed to join room.");
+      } else {
+        setJoinByLinkInput("");
+        setToast("Joined room.");
+        setTimeout(() => setToast(null), 2000);
+        if (parsed.startsWith("!")) setCurrentRoomId(parsed);
+        onClose();
+      }
+    } catch (err) {
+      setJoinByLinkError(
+        err instanceof Error ? err.message : "Failed to join room.",
+      );
+    } finally {
+      setJoinByLinkLoading(false);
+    }
+  };
+
+  const toggleServer = (host: string) => {
+    setSelectedServerHosts((prev) => {
+      const next = new Set(prev);
+      if (next.has(host)) next.delete(host);
+      else next.add(host);
+      return next;
+    });
+  };
+
+  const addCustomServer = () => {
+    const host = customServerInput.trim().toLowerCase();
+    if (!host) return;
+    if (customRoomSearchServers.includes(host)) {
+      setCustomServerInput("");
+      return;
+    }
+    setCustomRoomSearchServers([...customRoomSearchServers, host]);
+    setSelectedServerHosts((prev) => new Set(prev).add(host));
+    setCustomServerInput("");
+  };
+
+  const removeCustomServer = (host: string) => {
+    setCustomRoomSearchServers(customRoomSearchServers.filter((h) => h !== host));
+    setSelectedServerHosts((prev) => {
+      const next = new Set(prev);
+      next.delete(host);
+      return next;
+    });
+  };
+
+  const runSearch = async () => {
+    if (!client) return;
+    const hosts = Array.from(selectedServerHosts);
+    if (hosts.length === 0) {
+      setSearchError("Select at least one server.");
+      return;
+    }
+    setSearchError(null);
+    setSearchLoading(true);
+    setSearchResults([]);
+    try {
+      const filter = searchQuery.trim()
+        ? { generic_search_term: searchQuery.trim() }
+        : undefined;
+      const opts = filter
+        ? { limit: 50, filter }
+        : { limit: 50 };
+      const settled = await Promise.allSettled(
+        hosts.map((server) =>
+          client.publicRooms({ ...opts, server } as Parameters<typeof client.publicRooms>[0]),
+        ),
+      );
+      const all: (PublicRoomEntry & { _serverHost: string })[] = [];
+      const byId = new Map<string, PublicRoomEntry & { _serverHost: string }>();
+      settled.forEach((result, i) => {
+        const host = hosts[i];
+        if (result.status === "fulfilled" && result.value?.chunk) {
+          const chunk = result.value.chunk as PublicRoomEntry[];
+          for (const room of chunk) {
+            const withServer = { ...room, _serverHost: host };
+            if (!byId.has(room.room_id)) {
+              byId.set(room.room_id, withServer);
+              all.push(withServer);
+            }
+          }
+        }
+      });
+      let filtered = all;
+      if (!allowNsfwRooms) {
+        filtered = all.filter((r) => !isNsfwRoom(r));
+      }
+      setSearchResults(filtered);
+      setSelectedRoomIds(new Set());
+    } catch (err) {
+      setSearchError(
+        err instanceof Error ? err.message : "Search failed.",
+      );
+    } finally {
+      setSearchLoading(false);
+    }
+  };
+
+  const toggleRoom = (roomId: string) => {
+    setSelectedRoomIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(roomId)) next.delete(roomId);
+      else next.add(roomId);
+      return next;
+    });
+  };
+
+  const joinSelectedRooms = async () => {
+    if (allSwarmClients.length === 0) return;
+    const ids = Array.from(selectedRoomIds);
+    if (ids.length === 0) return;
+    setJoinSelectedLoading(true);
+    setToast(null);
+    try {
+      for (let i = 0; i < ids.length; i++) {
+        const roomId = ids[i];
+        setToast(`Joining ${i + 1}/${ids.length}…`);
+        await joinRoomWithSwarm(roomId, allSwarmClients);
+      }
+      setToast(`Joined ${ids.length} room(s).`);
+      setTimeout(() => setToast(null), 2000);
+      setSelectedRoomIds(new Set());
+      setSearchResults((prev) => prev.filter((r) => !ids.includes(r.room_id)));
+    } catch (err) {
+      setToast(err instanceof Error ? err.message : "Join failed.");
+      setTimeout(() => setToast(null), 3000);
+    } finally {
+      setJoinSelectedLoading(false);
+    }
+  };
+
+  if (!open || typeof document === "undefined") return null;
+
+  const serverListHosts = new Set(serverList.map((s) => s.host));
+  const customOnly = customRoomSearchServers.filter(
+    (host) => !serverListHosts.has(host),
+  );
+  const allServers: RoomSearchServer[] = [
+    ...serverList,
+    ...customOnly.map((host) => ({ id: host, name: host, host })),
+  ];
+  const customSet = new Set(customRoomSearchServers);
+
+  return createPortal(
+    <div className="fixed inset-0 z-100 bg-surface">
+      <div className="flex h-full flex-col">
+        <div className="flex items-center justify-between border-b border-border px-5 py-4">
+          <h2 className="text-[1.1rem] font-semibold">Discover rooms</h2>
+          <button
+            onClick={onClose}
+            title="Close"
+            className="rounded-sm p-1.5 text-muted transition-colors hover:text-foreground"
+          >
+            <X size={20} strokeWidth={2} />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-6">
+          {!client ? (
+            <p className="text-[0.9rem] text-muted">
+              Log in to search and join rooms.
+            </p>
+          ) : (
+            <>
+              <section>
+                <h3 className="text-[0.85rem] font-semibold uppercase tracking-wide text-muted mb-2">
+                  Join by link
+                </h3>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Paste matrix.to link or room ID / alias"
+                    value={joinByLinkInput}
+                    onChange={(e) => {
+                      setJoinByLinkInput(e.target.value);
+                      setJoinByLinkError(null);
+                    }}
+                    className="flex-1 min-w-0 rounded-sm border border-border bg-background px-3 py-2 text-[0.9rem] text-foreground outline-none focus:border-accent"
+                  />
+                  <button
+                    onClick={handleJoinByLink}
+                    disabled={joinByLinkLoading}
+                    className="shrink-0 rounded-sm bg-accent px-4 py-2 text-[0.9rem] font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-50"
+                  >
+                    {joinByLinkLoading ? "…" : "Join"}
+                  </button>
+                </div>
+                {joinByLinkError && (
+                  <p className="mt-1.5 text-[0.8rem] text-danger">
+                    {joinByLinkError}
+                  </p>
+                )}
+              </section>
+
+              <section>
+                <h3 className="text-[0.85rem] font-semibold uppercase tracking-wide text-muted mb-2">
+                  Servers to search
+                </h3>
+                {serversLoading ? (
+                  <p className="text-[0.85rem] text-muted">Loading servers…</p>
+                ) : serversError ? (
+                  <p className="text-[0.85rem] text-danger">{serversError}</p>
+                ) : (
+                  <div className="max-h-40 overflow-y-auto rounded-lg border border-border bg-surface2 p-2 space-y-1">
+                    {allServers.map((srv) => (
+                      <label
+                        key={srv.id}
+                        className="flex items-center gap-2 cursor-pointer"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedServerHosts.has(srv.host)}
+                          onChange={() => toggleServer(srv.host)}
+                          className="rounded border-border"
+                        />
+                        <span className="text-[0.85rem] truncate">
+                          {srv.name}
+                        </span>
+                        {customSet.has(srv.host) && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              removeCustomServer(srv.host);
+                            }}
+                            className="ml-auto text-[0.75rem] text-muted hover:text-foreground"
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </label>
+                    ))}
+                  </div>
+                )}
+                <div className="mt-2 flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Add custom server (hostname)"
+                    value={customServerInput}
+                    onChange={(e) => setCustomServerInput(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && addCustomServer()}
+                    className="flex-1 min-w-0 rounded-sm border border-border bg-background px-3 py-2 text-[0.85rem] text-foreground outline-none focus:border-accent"
+                  />
+                  <button
+                    type="button"
+                    onClick={addCustomServer}
+                    className="shrink-0 rounded-sm border border-border px-3 py-2 text-[0.85rem] transition-colors hover:bg-surface2"
+                  >
+                    <Plus size={16} className="inline" /> Add
+                  </button>
+                </div>
+              </section>
+
+              <section>
+                <h3 className="text-[0.85rem] font-semibold uppercase tracking-wide text-muted mb-2">
+                  Search directory
+                </h3>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Search term (leave blank to list rooms)"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && runSearch()}
+                    className="flex-1 min-w-0 rounded-sm border border-border bg-background px-3 py-2 text-[0.9rem] text-foreground outline-none focus:border-accent"
+                  />
+                  <button
+                    onClick={runSearch}
+                    disabled={searchLoading || selectedServerHosts.size === 0}
+                    className="shrink-0 rounded-sm bg-accent px-4 py-2 text-[0.9rem] font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-50"
+                  >
+                    {searchLoading ? "…" : "Search"}
+                  </button>
+                </div>
+                {searchError && (
+                  <p className="mt-1.5 text-[0.8rem] text-danger">
+                    {searchError}
+                  </p>
+                )}
+
+                {searchResults.length > 0 && (
+                  <div className="mt-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[0.8rem] text-muted">
+                        {searchResults.length} room(s)
+                      </span>
+                      <button
+                        onClick={joinSelectedRooms}
+                        disabled={
+                          joinSelectedLoading ||
+                          selectedRoomIds.size === 0
+                        }
+                        className="rounded-sm bg-accent px-3 py-1.5 text-[0.8rem] font-medium text-white hover:bg-accent-hover disabled:opacity-50"
+                      >
+                        {joinSelectedLoading
+                          ? "…"
+                          : `Join selected (${selectedRoomIds.size})`}
+                      </button>
+                    </div>
+                    <ul className="max-h-60 overflow-y-auto rounded-lg border border-border bg-surface2 divide-y divide-border">
+                      {searchResults.map((room) => (
+                        <li key={room.room_id} className="flex items-start gap-2 p-2">
+                          <input
+                            type="checkbox"
+                            checked={selectedRoomIds.has(room.room_id)}
+                            onChange={() => toggleRoom(room.room_id)}
+                            className="mt-0.5 rounded border-border"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="text-[0.9rem] font-medium truncate">
+                              {room.name || room.canonical_alias || room.room_id}
+                            </div>
+                            {room.topic && (
+                              <div className="text-[0.75rem] text-muted line-clamp-2">
+                                {room.topic}
+                              </div>
+                            )}
+                            <div className="text-[0.7rem] text-muted">
+                              {room.num_joined_members ?? 0} members ·{" "}
+                              {room._serverHost}
+                            </div>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </section>
+            </>
+          )}
+
+          {toast && (
+            <div className="fixed bottom-4 left-1/2 -translate-x-1/2 rounded-lg bg-surface2 border border-border px-4 py-2 text-[0.85rem] shadow-lg">
+              {toast}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}

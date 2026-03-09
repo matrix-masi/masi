@@ -29,6 +29,8 @@ export default function SettingsModal({
     togglePlaylistShowMessages,
     playlistMessageDuration,
     setPlaylistMessageDuration,
+    allowNsfwRooms,
+    setAllowNsfwRooms,
   } = useSettings();
 
   if (!open || typeof document === "undefined") return null;
@@ -161,6 +163,31 @@ export default function SettingsModal({
                 >
                   <CheckCircle size={12} />
                 </span>
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-6 space-y-4">
+            <h3 className="text-[0.85rem] font-semibold uppercase tracking-wide text-muted">
+              Room discovery
+            </h3>
+            <div className="flex items-center justify-between rounded-lg bg-surface2 px-4 py-3">
+              <div>
+                <span className="text-[0.9rem]">Allow NSFW rooms</span>
+                <p className="text-[0.75rem] text-muted">
+                  Show rooms marked NSFW when searching the room directory
+                </p>
+              </div>
+              <button
+                onClick={() => setAllowNsfwRooms(!allowNsfwRooms)}
+                className={`relative h-7 w-[52px] shrink-0 rounded-full transition-colors ${allowNsfwRooms ? "bg-accent" : "bg-border"}`}
+                title={allowNsfwRooms ? "Hide NSFW rooms" : "Show NSFW rooms"}
+              >
+                <span
+                  className={`absolute top-0.5 left-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-accent text-white transition-transform ${
+                    allowNsfwRooms ? "translate-x-[24px]" : ""
+                  }`}
+                />
               </button>
             </div>
           </div>
