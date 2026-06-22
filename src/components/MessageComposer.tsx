@@ -1,40 +1,27 @@
 import { useState, useRef, useCallback, type FormEvent, type ChangeEvent, type KeyboardEvent } from "react";
-import { EventType, MsgType, type MatrixClient } from "matrix-js-sdk";
+import { Clock } from "lucide-react";
+import { EventType, MsgType, type MatrixClient, type Room } from "matrix-js-sdk";
 import { useMatrix } from "../contexts/MatrixContext";
 import { useSettings } from "../contexts/SettingsContext";
 import { useClientsForRoom } from "../hooks/useRoomList";
+import { useScheduledMessages } from "../hooks/useScheduledMessages";
 import { getImageDimensions, getVideoDimensions } from "../lib/helpers";
 import { markdownToMatrixHtml } from "../lib/markdown";
-
-function sendWithTimeout(
-  client: MatrixClient,
-  roomId: string,
-  eventType: EventType,
-  content: Record<string, unknown>,
-  timeoutMs: number,
-): Promise<{ success: boolean }> {
-  return new Promise((resolve) => {
-    const timer = setTimeout(() => resolve({ success: false }), timeoutMs);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (client.sendEvent as any)(roomId, eventType, content)
-      .then(() => {
-        clearTimeout(timer);
-        resolve({ success: true });
-      })
-      .catch(() => {
-        clearTimeout(timer);
-        resolve({ success: false });
-      });
-  });
-}
+import { sendWithFailover } from "../lib/sendMessage";
+import ScheduledMessageEntryForm, {
+  type ScheduledMessageFormValues,
+} from "./ScheduledMessageEntryForm";
 
 export default function MessageComposer() {
-  const { client, currentRoomId, allSwarmClients } = useMatrix();
+  const { client, currentRoomId, allSwarmClients, activeSwarm } = useMatrix();
   const { sendMarkdown, swarmFailoverTimeout } = useSettings();
   const roomClients = useClientsForRoom(currentRoomId);
+  const scheduled = useScheduledMessages(client, activeSwarm);
   const [message, setMessage] = useState("");
   const [uploadToast, setUploadToast] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [showScheduleForm, setShowScheduleForm] = useState(false);
+  const [scheduleLoading, setScheduleLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -44,7 +31,7 @@ export default function MessageComposer() {
     return client ? [client] : [];
   }, [roomClients, allSwarmClients, client]);
 
-  const sendWithFailover = useCallback(
+  const sendEventWithFailover = useCallback(
     async (
       roomId: string,
       eventType: EventType,
@@ -54,21 +41,47 @@ export default function MessageComposer() {
       if (clients.length === 0) return false;
 
       const timeoutMs = swarmFailoverTimeout * 1000;
-
-      for (const c of clients) {
-        const { success } = await sendWithTimeout(
-          c,
-          roomId,
-          eventType,
-          content,
-          timeoutMs,
-        );
-        if (success) return true;
-      }
-      return false;
+      const result = await sendWithFailover(clients, roomId, eventType, content, timeoutMs);
+      return result.success;
     },
     [getOrderedClients, swarmFailoverTimeout],
   );
+
+  const knownRooms: Room[] = (() => {
+    const seen = new Map<string, Room>();
+    for (const c of allSwarmClients.length > 0 ? allSwarmClients : client ? [client] : []) {
+      for (const room of c.getRooms()) {
+        if (room.getMyMembership() !== "join") continue;
+        seen.set(room.roomId, room);
+      }
+    }
+    return Array.from(seen.values()).sort((a, b) =>
+      (a.name || a.roomId).localeCompare(b.name || b.roomId),
+    );
+  })();
+
+  const handleQuickSchedule = async (values: ScheduledMessageFormValues) => {
+    setScheduleLoading(true);
+    try {
+      const result = await scheduled.add({
+        ...values,
+        markdown: sendMarkdown,
+      });
+      setMessage("");
+      setShowScheduleForm(false);
+      setUploadToast(
+        result.warnings.length > 0
+          ? result.warnings.join(" ")
+          : "Message scheduled.",
+      );
+      setTimeout(() => setUploadToast(null), 4000);
+    } catch (err) {
+      setSendError(err instanceof Error ? err.message : "Failed to schedule message.");
+      setTimeout(() => setSendError(null), 4000);
+    } finally {
+      setScheduleLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -86,7 +99,7 @@ export default function MessageComposer() {
         }
       : { msgtype: MsgType.Text, body };
 
-    const ok = await sendWithFailover(
+    const ok = await sendEventWithFailover(
       currentRoomId,
       EventType.RoomMessage,
       content,
@@ -142,7 +155,7 @@ export default function MessageComposer() {
           info.w = dims.width;
           info.h = dims.height;
         }
-        await sendWithFailover(currentRoomId, EventType.RoomMessage, {
+        await sendEventWithFailover(currentRoomId, EventType.RoomMessage, {
           msgtype: MsgType.Image,
           body: file.name,
           url: mxcUrl,
@@ -159,7 +172,7 @@ export default function MessageComposer() {
           info.h = dims.height;
           info.duration = dims.duration;
         }
-        await sendWithFailover(currentRoomId, EventType.RoomMessage, {
+        await sendEventWithFailover(currentRoomId, EventType.RoomMessage, {
           msgtype: MsgType.Video,
           body: file.name,
           url: mxcUrl,
@@ -211,6 +224,14 @@ export default function MessageComposer() {
           className="min-w-0 flex-1 resize-none rounded-sm border border-border bg-background px-3.5 py-2.5 text-[0.9rem] text-foreground outline-none transition-colors focus:border-accent"
         />
         <button
+          type="button"
+          title="Schedule"
+          onClick={() => setShowScheduleForm((v) => !v)}
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted transition-colors hover:bg-surface2 hover:text-foreground"
+        >
+          <Clock size={18} />
+        </button>
+        <button
           type="submit"
           title="Send"
           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent text-[1.1rem] text-white transition-colors hover:bg-accent-hover"
@@ -218,6 +239,27 @@ export default function MessageComposer() {
           ➤
         </button>
       </form>
+
+      {showScheduleForm && currentRoomId && (
+        <div className="fixed bottom-[72px] left-1/2 z-50 w-[440px] max-w-[calc(100vw-24px)] -translate-x-1/2 rounded-lg border border-border bg-surface p-4 shadow-xl">
+          <div className="mb-3">
+            <h3 className="text-[0.95rem] font-semibold">Schedule message</h3>
+            <p className="text-[0.76rem] text-muted">
+              Attachments are uploaded now and sent to the destination at send time.
+            </p>
+          </div>
+          <ScheduledMessageEntryForm
+            rooms={knownRooms}
+            initialDate={new Date()}
+            initialTo={currentRoomId}
+            initialTargetRoomId={currentRoomId}
+            initialMessage={message}
+            loading={scheduleLoading}
+            onSubmit={handleQuickSchedule}
+            onCancel={() => setShowScheduleForm(false)}
+          />
+        </div>
+      )}
 
       {(uploadToast || sendError) && (
         <div

@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
-import { Settings, Plus, Play } from "lucide-react";
+import { CalendarClock, Settings, Plus, Play } from "lucide-react";
 import { useMatrix } from "../contexts/MatrixContext";
 import { useFavourites, getFavouritesListName } from "../hooks/useFavourites";
+import { findOrCreateScheduledRoom } from "../lib/scheduledMessageRoom";
 import RoomItem from "./RoomItem";
 import SettingsModal from "./SettingsModal";
 import CreateFavouritesListModal from "./CreateFavouritesListModal";
@@ -13,13 +14,14 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ open, onClose }: SidebarProps) {
-  const { client, logout, syncState, currentRoomId, setCurrentRoomId, openPlaylist } =
+  const { client, activeSwarm, logout, syncState, currentRoomId, setCurrentRoomId, openPlaylist } =
     useMatrix();
   const [filter, setFilter] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [showSettings, setShowSettings] = useState(false);
   const [showCreateList, setShowCreateList] = useState(false);
   const [showServerRoomSearch, setShowServerRoomSearch] = useState(false);
+  const [openingScheduled, setOpeningScheduled] = useState(false);
   const { favouriteRooms, regularRooms } = useFavourites(filter);
 
   useEffect(() => {
@@ -39,6 +41,19 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
     onClose();
   };
 
+  const openScheduledMessages = async () => {
+    if (!client || !activeSwarm || openingScheduled) return;
+    setOpeningScheduled(true);
+    try {
+      const roomId = await findOrCreateScheduledRoom(client, activeSwarm.id);
+      selectRoom(roomId);
+    } catch (err) {
+      console.error("Failed to open calendar:", err);
+    } finally {
+      setOpeningScheduled(false);
+    }
+  };
+
   return (
     <aside
       className={`
@@ -51,13 +66,23 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
         <span className="truncate text-[0.9rem] font-semibold">
           {displayName}
         </span>
-        <button
-          onClick={() => setShowSettings(true)}
-          title="Settings"
-          className="rounded-sm p-1.5 text-muted transition-colors hover:text-foreground"
-        >
-          <Settings size={20} strokeWidth={2} />
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={openScheduledMessages}
+            title="Calendar"
+            disabled={openingScheduled || !client || !activeSwarm}
+            className="rounded-sm p-1.5 text-muted transition-colors hover:text-foreground disabled:opacity-50"
+          >
+            <CalendarClock size={19} strokeWidth={2} />
+          </button>
+          <button
+            onClick={() => setShowSettings(true)}
+            title="Settings"
+            className="rounded-sm p-1.5 text-muted transition-colors hover:text-foreground"
+          >
+            <Settings size={20} strokeWidth={2} />
+          </button>
+        </div>
       </div>
 
       <div className="mx-3 my-2 flex items-center gap-1.5">

@@ -10,6 +10,8 @@ import TypingIndicator from "./TypingIndicator";
 import MessageComposer from "./MessageComposer";
 import SwarmSelector from "./SwarmSelector";
 import AddToFavouritesModal from "./AddToFavouritesModal";
+import ScheduledMessagesCalendar from "./ScheduledMessagesCalendar";
+import { isScheduledMessagesRoom } from "../lib/scheduledMessageRoom";
 
 interface ChatAreaProps {
   onOpenSidebar: () => void;
@@ -20,9 +22,11 @@ export default function ChatArea({ onOpenSidebar }: ChatAreaProps) {
   const { sendReadReceipts } = useSettings();
   const { isFavouritesRoom } = useFavourites();
   const isFav = isFavouritesRoom(currentRoomId);
+  const currentRoom = currentRoomId ? client?.getRoom(currentRoomId) : null;
+  const isScheduledRoom = isScheduledMessagesRoom(currentRoom);
 
   useEffect(() => {
-    if (!client || !currentRoomId || isFav || !sendReadReceipts) return;
+    if (!client || !currentRoomId || isFav || isScheduledRoom || !sendReadReceipts) return;
     const room = client.getRoom(currentRoomId);
     if (!room) return;
     const events = room.getLiveTimeline().getEvents();
@@ -32,7 +36,7 @@ export default function ChatArea({ onOpenSidebar }: ChatAreaProps) {
     client.setRoomReadMarkers(currentRoomId, eventId, lastEvent).catch((err) => {
       console.error("Failed to send read receipt:", err);
     });
-  }, [client, currentRoomId, isFav, sendReadReceipts]);
+  }, [client, currentRoomId, isFav, isScheduledRoom, sendReadReceipts]);
 
   const [selectMode, setSelectMode] = useState(false);
   const [selectedEventIds, setSelectedEventIds] = useState<Set<string>>(new Set());
@@ -101,7 +105,9 @@ export default function ChatArea({ onOpenSidebar }: ChatAreaProps) {
         onLeaveRoom={leaveCurrentRoom}
       />
       <CryptoBanner />
-      {isFav ? (
+      {isScheduledRoom ? (
+        <ScheduledMessagesCalendar />
+      ) : isFav ? (
         <FavouritesTimeline
           selectMode={selectMode}
           selectedEventIds={selectedEventIds}
@@ -114,8 +120,8 @@ export default function ChatArea({ onOpenSidebar }: ChatAreaProps) {
           toggleEventSelection={toggleEventSelection}
         />
       )}
-      {!isFav && <TypingIndicator />}
-      {!isFav && currentRoomId && (
+      {!isFav && !isScheduledRoom && <TypingIndicator />}
+      {!isFav && !isScheduledRoom && currentRoomId && (
         <div className="flex items-center gap-1 border-t-0">
           {currentRoomId && <SwarmSelector roomId={currentRoomId} />}
           <div className="min-w-0 flex-1">

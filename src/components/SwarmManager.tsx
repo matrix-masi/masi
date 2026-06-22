@@ -1,7 +1,15 @@
 import { useState, type FormEvent } from "react";
-import { Trash2, Plus, Lock, Unlock, Download, Key, Shield, Eye, EyeOff, KeyRound } from "lucide-react";
+import type { MatrixClient } from "matrix-js-sdk";
+import { CalendarClock, Trash2, Plus, Lock, Unlock, Download, Key, Shield, Eye, EyeOff, KeyRound, RotateCcw } from "lucide-react";
 import { useSwarm } from "../contexts/SwarmContext";
 import { useSettings } from "../contexts/SettingsContext";
+import {
+  dispatchDueMessages,
+  listScheduledMessages,
+  resetScheduledRetries,
+  type DispatchSummary,
+} from "../lib/scheduledMessages";
+import { findScheduledRoom } from "../lib/scheduledMessageRoom";
 import { exportAppConfig, exportSwarmConfig } from "../lib/swarmCrypto";
 import {
   loadAppConfig,
@@ -35,6 +43,7 @@ export default function SwarmManager() {
   const {
     swarms,
     activeSwarmId,
+    clients,
     setActiveSwarm,
     addSwarm,
     removeSwarm,
@@ -64,6 +73,40 @@ export default function SwarmManager() {
   const [revealLoading, setRevealLoading] = useState(false);
 
   const hideInternals = encrypted && !internalsRevealed;
+
+  const getSwarmClients = (swarm: Swarm) =>
+    swarm.accounts
+      .map((account) => clients.get(account.id))
+      .filter((client): client is MatrixClient => !!client);
+
+  const dispatchScheduledForSwarm = async (
+    swarm: Swarm,
+  ): Promise<DispatchSummary> => {
+    const orderedClients = getSwarmClients(swarm);
+    return dispatchDueMessages({
+      swarm,
+      clients: orderedClients,
+      timeoutMs: swarmFailoverTimeout * 1000,
+    });
+  };
+
+  const resetRetriesForSwarm = async (swarm: Swarm): Promise<number> => {
+    const primary = getSwarmClients(swarm)[0];
+    if (!primary) return 0;
+    const room = findScheduledRoom(primary, swarm.id);
+    if (!room) return 0;
+    const records = await listScheduledMessages(primary, room.roomId);
+    const retryRecords = records.filter(
+      (record) =>
+        record.payload.attempts > 0 ||
+        !!record.payload.lastError ||
+        !!record.payload.pausedUntil,
+    );
+    for (const record of retryRecords) {
+      await resetScheduledRetries(primary, record);
+    }
+    return retryRecords.length;
+  };
 
   const handleReveal = async () => {
     const envelope = getEncryptedEnvelope();
@@ -163,6 +206,8 @@ export default function SwarmManager() {
           onClearPassword={() => clearSwarmPassword(swarm.id)}
           onUnlock={(pw) => unlockSwarm(swarm.id, pw)}
           onLock={() => lockSwarm(swarm.id)}
+          onDispatchScheduled={() => dispatchScheduledForSwarm(swarm)}
+          onResetScheduledRetries={() => resetRetriesForSwarm(swarm)}
         />
       ))}
 
@@ -350,6 +395,8 @@ interface SwarmCardProps {
   onClearPassword: () => void;
   onUnlock: (pw: string) => Promise<boolean>;
   onLock: () => void;
+  onDispatchScheduled: () => Promise<DispatchSummary>;
+  onResetScheduledRetries: () => Promise<number>;
 }
 
 function SwarmCard({
@@ -367,6 +414,8 @@ function SwarmCard({
   onClearPassword,
   onUnlock,
   onLock,
+  onDispatchScheduled,
+  onResetScheduledRetries,
 }: SwarmCardProps) {
   const borderColor = SWARM_COLORS[colorIdx % SWARM_COLORS.length];
   const nameColor = NAME_COLORS[colorIdx % NAME_COLORS.length];
@@ -376,6 +425,8 @@ function SwarmCard({
   const [unlockError, setUnlockError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState(swarm.name);
+  const [scheduledBusy, setScheduledBusy] = useState(false);
+  const [scheduledStatus, setScheduledStatus] = useState<string | null>(null);
 
   const hasLock = !!swarm.lockSalt;
 
@@ -386,6 +437,40 @@ function SwarmCard({
       setUnlockInput("");
     } else {
       setUnlockError("Incorrect password");
+    }
+  };
+
+  const handleDispatchScheduled = async () => {
+    setScheduledBusy(true);
+    setScheduledStatus(null);
+    try {
+      const summary = await onDispatchScheduled();
+      setScheduledStatus(
+        `Sent ${summary.sent} · ${summary.failed} failed · ${summary.paused} paused`,
+      );
+    } catch (err) {
+      setScheduledStatus(
+        err instanceof Error ? err.message : "Failed to send calendar items",
+      );
+    } finally {
+      setScheduledBusy(false);
+      setTimeout(() => setScheduledStatus(null), 4000);
+    }
+  };
+
+  const handleResetScheduledRetries = async () => {
+    setScheduledBusy(true);
+    setScheduledStatus(null);
+    try {
+      const count = await onResetScheduledRetries();
+      setScheduledStatus(`Reset retries for ${count} scheduled message${count === 1 ? "" : "s"}`);
+    } catch (err) {
+      setScheduledStatus(
+        err instanceof Error ? err.message : "Failed to reset scheduled retries",
+      );
+    } finally {
+      setScheduledBusy(false);
+      setTimeout(() => setScheduledStatus(null), 4000);
     }
   };
 
@@ -577,6 +662,40 @@ function SwarmCard({
                 <Key size={12} />
                 {hasLock ? "Change swarm password" : "Set swarm password"}
               </button>
+            )}
+          </div>
+
+          <div className="mt-3 rounded-lg border border-border/60 bg-background/50 p-2">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <div>
+                <div className="text-[0.82rem] font-semibold">Calendar</div>
+                <div className="text-[0.72rem] text-muted">
+                  Send due messages and manage failed retries.
+                </div>
+              </div>
+              <div className="flex shrink-0 gap-1">
+                <button
+                  type="button"
+                  disabled={scheduledBusy}
+                  onClick={handleDispatchScheduled}
+                  className="flex items-center gap-1 rounded-sm bg-accent px-2.5 py-1.5 text-[0.75rem] font-semibold text-white transition-colors hover:bg-accent-hover disabled:opacity-50"
+                >
+                  <CalendarClock size={13} />
+                  Send due
+                </button>
+                <button
+                  type="button"
+                  disabled={scheduledBusy}
+                  onClick={handleResetScheduledRetries}
+                  title="Reset scheduled-message retries"
+                  className="rounded-sm p-1.5 text-muted transition-colors hover:bg-surface2 hover:text-foreground disabled:opacity-50"
+                >
+                  <RotateCcw size={14} />
+                </button>
+              </div>
+            </div>
+            {scheduledStatus && (
+              <p className="text-[0.74rem] text-muted">{scheduledStatus}</p>
             )}
           </div>
         </>

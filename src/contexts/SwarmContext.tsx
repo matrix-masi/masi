@@ -28,6 +28,7 @@ import {
   decryptSwarmCredentials,
 } from "../lib/swarmCrypto";
 import { SwarmSyncScheduler } from "../lib/swarmSyncScheduler";
+import { dispatchDueMessages } from "../lib/scheduledMessages";
 
 type ClientHealth = "healthy" | "syncing" | "error";
 
@@ -201,6 +202,7 @@ export function SwarmProvider({ children }: { children: ReactNode }) {
   const swarmsRef = useRef(swarms);
   swarmsRef.current = swarms;
   const schedulerRef = useRef<SwarmSyncScheduler | null>(null);
+  const scheduledDispatchRunningRef = useRef(false);
   const sessionVisitedRoomsRef = useRef<Set<string>>(new Set());
   const initedRef = useRef(false);
 
@@ -768,6 +770,48 @@ export function SwarmProvider({ children }: { children: ReactNode }) {
       schedulerRef.current?.destroy();
     };
   }, []);
+
+  useEffect(() => {
+    const run = async () => {
+      if (scheduledDispatchRunningRef.current) return;
+      scheduledDispatchRunningRef.current = true;
+      try {
+        const config = loadAppConfig();
+        const timeoutMs =
+          (config?.preferences.swarmFailoverTimeout ??
+            DEFAULT_PREFERENCES.swarmFailoverTimeout) * 1000;
+        for (const swarm of swarmsRef.current) {
+          if (!unlockedSwarms.has(swarm.id)) continue;
+          const orderedClients = swarm.accounts
+            .map((account) => clientsRef.current.get(account.id))
+            .filter((client): client is sdk.MatrixClient => !!client);
+          if (orderedClients.length === 0) continue;
+          const summary = await dispatchDueMessages({
+            swarm,
+            clients: orderedClients,
+            timeoutMs,
+          });
+          if (summary.failed > 0) {
+            console.warn("Scheduled message dispatch failures:", summary.errors);
+          }
+        }
+      } finally {
+        scheduledDispatchRunningRef.current = false;
+      }
+    };
+
+    const timer = setInterval(() => {
+      run().catch((err) =>
+        console.warn("Scheduled message dispatch failed:", err),
+      );
+    }, 60_000);
+
+    run().catch((err) =>
+      console.warn("Scheduled message dispatch failed:", err),
+    );
+
+    return () => clearInterval(timer);
+  }, [unlockedSwarms]);
 
   return (
     <SwarmContext.Provider

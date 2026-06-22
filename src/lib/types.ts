@@ -50,6 +50,33 @@ export interface AppPreferences {
   allowNsfwRooms: boolean;
 }
 
+export interface ScheduledMessageAttachment {
+  msgtype: "m.image" | "m.video";
+  body: string;
+  url?: string;
+  file?: Record<string, unknown>;
+  info: Record<string, unknown>;
+}
+
+export interface ScheduledMessagePayload {
+  version: 1;
+  id: string;
+  swarmId: string;
+  createdAt: number;
+  scheduledAt: number;
+  timezone: string;
+  to: string;
+  targetRoomId?: string;
+  message: string;
+  markdown: boolean;
+  attachments: ScheduledMessageAttachment[];
+  attempts: number;
+  lastAttemptAt?: number;
+  lastError?: string;
+  pausedUntil?: number;
+  sentPartKeys?: string[];
+}
+
 export interface AppConfig {
   swarmConfig: SwarmConfig;
   preferences: AppPreferences;

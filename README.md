@@ -9,6 +9,7 @@ A minimalistic, mobile-friendly Matrix chat client that builds to a single HTML 
 - Send and receive text messages
 - Send and view images (with lightbox)
 - Send and view videos (inline player + lightbox)
+- Calendar room for scheduling messages
 - Session persistence (stays logged in across refreshes)
 - Mobile-friendly responsive layout
 - Dark theme
@@ -43,6 +44,12 @@ Working across several chats and need to keep important messages in one place? *
 ### Playlist
 
 Turn any favourites list into a **playlist**: a fullscreen, auto-advancing slideshow. Hit play on a list (from the sidebar or the list’s header) to step through its items-images and, if you enable it in settings, text messages-with configurable durations. Handy for review sessions, standups, or any time you want to cycle through saved content hands-free.
+
+### Calendar
+
+Use the **Calendar** room to schedule messages for later. Pick a destination room, choose a date and time, write the message, and optionally attach images or videos. Masi stores scheduled items in a private per-swarm Calendar room, then sends them when the app is running and the swarm has access to the destination room. Failed sends are visible in the calendar and can be retried or reset
+
+![calendar demo](./assets/docs/Feature-Calendar-ScheduleMessage.png)
 
 ## Development
 
