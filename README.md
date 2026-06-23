@@ -2,6 +2,8 @@
 
 A minimalistic, mobile-friendly Matrix chat client that builds to a single HTML file.
 
+> ⚠️ Warning - This whole client is still very much experimental.
+
 ## Features
 
 - Login via username, password, and server URL
@@ -18,11 +20,11 @@ A minimalistic, mobile-friendly Matrix chat client that builds to a single HTML 
 
 ### Login Screen
 
-<img width="1814" height="906" alt="image" src="https://github.com/user-attachments/assets/9888eba5-a4e3-49e6-ac1a-711993465668" />
+![login](https://github.com/user-attachments/assets/9888eba5-a4e3-49e6-ac1a-711993465668)
 
 ### Room selection
 
-<img width="1813" height="911" alt="image" src="https://github.com/user-attachments/assets/13cb9b02-ca87-464a-96fd-b0751f26fda9" />
+![room selection](https://github.com/user-attachments/assets/13cb9b02-ca87-464a-96fd-b0751f26fda9)
 
 ### Manage multiple matrix accounts
 
@@ -35,15 +37,21 @@ Matrix currently ties user availability and message continuity to the uptime of 
 
 </details>
 
-<img width="1811" height="889" alt="image" src="https://github.com/user-attachments/assets/aba8b663-73a8-4aff-8455-400f40689917" />
+![swarm manager](https://github.com/user-attachments/assets/aba8b663-73a8-4aff-8455-400f40689917)
 
 ### Favourites
 
 Working across several chats and need to keep important messages in one place? **Favourites** let you collect messages from any room into named lists. Create lists (e.g. "London Project", "Meeting notes"), turn on select mode in any chat, choose the messages you care about, and add them to one or more lists. Each list is a timeline of links to those messages: when you open a list, Masi resolves each link and shows the actual message content, so you get a single view of your saved snippets from different conversations - like a shared board of references without leaving the app.
 
+![favourites-add](./assets/docs/Feature-Favourites-AddToFavourites.png)
+
+![favourites-view](./assets/docs/Feature-Favourites-ListAndPlayer.png)
+
 ### Playlist
 
 Turn any favourites list into a **playlist**: a fullscreen, auto-advancing slideshow. Hit play on a list (from the sidebar or the list’s header) to step through its items-images and, if you enable it in settings, text messages-with configurable durations. Handy for review sessions, standups, or any time you want to cycle through saved content hands-free.
+
+![presentation](./assets/docs/Feature-PresentationMode.png)
 
 ### Calendar
 
