@@ -1,5 +1,7 @@
 # Matrix Single HTML Client
 
+[AI:X](https://0rwx.com/)
+
 A minimalistic, mobile-friendly Matrix chat client that builds to a single HTML file.
 
 > ⚠️ Warning - This whole client is still very much experimental.
